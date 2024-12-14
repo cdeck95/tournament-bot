@@ -1,0 +1,137 @@
+import os
+import discord
+from discord.ext import tasks
+from dotenv import load_dotenv
+import requests
+from bs4 import BeautifulSoup
+import json
+from datetime import datetime
+
+# Load environment variables
+load_dotenv()
+TOKEN = os.getenv('DISCORD_TOKEN')
+CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID'))  # Discord channel ID as integer
+
+# Discord client
+intents = discord.Intents.default()
+client = discord.Client(intents=intents)
+
+TOURNAMENTS_FILE = "tournaments.json"
+TOURNAMENT_PAGE_URL = "https://www.discgolfscene.com/tournaments/options;distance=100;zip=08043;country=USA"
+
+# Fetch tournaments from the webpage
+def fetch_tournaments():
+    response = requests.get(TOURNAMENT_PAGE_URL)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    tournaments = []
+    tournament_divs = soup.select(".tournament-U, .tournament-C")
+    
+    # Current date for year handling
+    now = datetime.now()
+
+    for div in tournament_divs:
+        # Extract name and registration status
+        title_em = div.select_one("em")
+        name = title_em.text.strip() if title_em else "N/A"
+        registration_open = "trego" in title_em.get("class", []) if title_em else False
+        
+        # Extract registrants and location
+        registrants_span = div.find("span", text=lambda x: x and "Registrants:" in x)
+        registrants = 0  # Default to 0 if registrants span is missing
+        if registrants_span:
+            try:
+                registrants = int(registrants_span.text.split(":")[1].strip())
+            except (ValueError, IndexError):
+                registrants = 0  # Default to 0 if parsing fails
+
+        # Find location span (next <span> after registrants or empty span)
+        location_span = registrants_span.find_next("span") if registrants_span else div.find("span", text=lambda x: x and "at" in x)
+        location = location_span.text.strip() if location_span else "N/A"
+        
+        # Parse and format date
+        date_text = div.select_one(".t-date").text.strip() if div.select_one(".t-date") else None
+        try:
+            # First, parse the date without the year
+            parsed_date = datetime.strptime(date_text, "%B %d %A")
+            
+            # Adjust the year dynamically
+            if parsed_date.month < now.month:
+                year = now.year + 1  # Tournament in the next year
+            else:
+                year = now.year
+            
+            # Reconstruct the date with the correct year
+            full_date = parsed_date.replace(year=year)
+            date = full_date.strftime("%m/%d/%Y")  # Format to MM/DD/YYYY
+
+            # Skip past tournaments (just in case)
+            if full_date < now:
+                continue
+        except ValueError:
+            date = "N/A"
+        
+        tier = div.select_one(".info.ts").text.strip() if div.select_one(".info.ts") else None  # None if tier is missing
+
+        tournaments.append({
+            "name": name,
+            "registration_open": registration_open,
+            "location": location,
+            "date": date,
+            "registrants": registrants,
+            "tier": tier
+        })
+
+    return tournaments
+
+# Save and compare tournaments
+def save_tournaments(tournaments):
+    if not os.path.exists(TOURNAMENTS_FILE):
+        with open(TOURNAMENTS_FILE, "w") as f:
+            json.dump([], f)
+
+    with open(TOURNAMENTS_FILE, "r") as f:
+        saved_tournaments = json.load(f)
+
+    new_tournaments = [t for t in tournaments if t not in saved_tournaments]
+
+    if new_tournaments:
+        with open(TOURNAMENTS_FILE, "w") as f:
+            json.dump(tournaments, f, indent=4)
+
+    return new_tournaments
+
+@client.event
+async def on_ready():
+    print(f'{client.user} has connected to Discord!')
+    check_tournaments.start()  # Start the periodic task
+
+@tasks.loop(minutes=60)  # Run every hour
+async def check_tournaments():
+    print("Checking for new tournaments...")
+    tournaments = fetch_tournaments()
+    new_tournaments = save_tournaments(tournaments)
+
+    if new_tournaments:
+        channel = client.get_channel(CHANNEL_ID)
+        for tournament in new_tournaments:
+            # Inside the check_tournaments loop where we create and send the embed
+            embed = discord.Embed(
+                title="🚨 New Local Tournament 🚨",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="Name", value=tournament['name'], inline=False)
+            embed.add_field(name="Location", value=tournament['location'], inline=False)
+            embed.add_field(name="Date", value=tournament['date'], inline=True)
+            embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
+            embed.add_field(name="Registration Open", value="Yes" if tournament['registration_open'] else "No", inline=True)
+
+            # Add Tier only if it exists
+            if tournament['tier']:
+                embed.add_field(name="Tier", value=tournament['tier'], inline=False)
+
+            await channel.send(embed=embed)
+
+
+# Run the bot
+client.run(TOKEN)
