@@ -19,7 +19,6 @@ client = discord.Client(intents=intents)
 TOURNAMENTS_FILE = "tournaments.json"
 TOURNAMENT_PAGE_URL = "https://www.discgolfscene.com/tournaments/options;distance=100;zip=08043;country=USA"
 
-# Fetch tournaments from the webpage
 def fetch_tournaments():
     response = requests.get(TOURNAMENT_PAGE_URL)
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -31,6 +30,10 @@ def fetch_tournaments():
     now = datetime.now()
 
     for div in tournament_divs:
+        # Extract URL from the <a> tag
+        link_tag = div.select_one("a")
+        url = f"https://www.discgolfscene.com{link_tag['href']}" if link_tag and link_tag.has_attr('href') else "N/A"
+        
         # Extract name and registration status
         title_em = div.select_one("em")
         name = title_em.text.strip() if title_em else "N/A"
@@ -75,6 +78,7 @@ def fetch_tournaments():
 
         tournaments.append({
             "name": name,
+            "url": url,
             "registration_open": registration_open,
             "location": location,
             "date": date,
@@ -84,7 +88,6 @@ def fetch_tournaments():
 
     return tournaments
 
-# Save and compare tournaments
 def save_tournaments(tournaments):
     if not os.path.exists(TOURNAMENTS_FILE):
         with open(TOURNAMENTS_FILE, "w") as f:
@@ -93,45 +96,79 @@ def save_tournaments(tournaments):
     with open(TOURNAMENTS_FILE, "r") as f:
         saved_tournaments = json.load(f)
 
-    new_tournaments = [t for t in tournaments if t not in saved_tournaments]
+    # Identify new tournaments (unique by name, date, and location)
+    new_tournaments = [
+        t for t in tournaments if not any(
+            t["name"] == saved["name"] and
+            t["date"] == saved["date"] and
+            t["location"] == saved["location"]
+            for saved in saved_tournaments
+        )
+    ]
 
-    if new_tournaments:
-        with open(TOURNAMENTS_FILE, "w") as f:
-            json.dump(tournaments, f, indent=4)
+    # Check for registration changes
+    registration_opened = []
+    for current in tournaments:
+        for saved in saved_tournaments:
+            if (current["name"] == saved["name"] and
+                current["date"] == saved["date"] and
+                current["location"] == saved["location"] and
+                not saved.get("registration_open", False) and
+                current.get("registration_open", False)):
+                registration_opened.append(current)
 
-    return new_tournaments
+    # Save the updated tournaments list
+    with open(TOURNAMENTS_FILE, "w") as f:
+        json.dump(tournaments, f, indent=4)
+
+    return new_tournaments, registration_opened
 
 @client.event
 async def on_ready():
     print(f'{client.user} has connected to Discord!')
-    check_tournaments.start()  # Start the periodic task
+    if not check_tournaments.is_running():  # Ensure the task is not already running
+        check_tournaments.start()  # Start the periodic task
+
 
 @tasks.loop(minutes=60)  # Run every hour
 async def check_tournaments():
     print("Checking for new tournaments...")
     tournaments = fetch_tournaments()
-    new_tournaments = save_tournaments(tournaments)
+    new_tournaments, registration_opened = save_tournaments(tournaments)
 
-    if new_tournaments:
-        channel = client.get_channel(CHANNEL_ID)
-        for tournament in new_tournaments:
-            # Inside the check_tournaments loop where we create and send the embed
-            embed = discord.Embed(
-                title="🚨 New Local Tournament 🚨",
-                color=discord.Color.blue()
-            )
-            embed.add_field(name="Name", value=tournament['name'], inline=False)
-            embed.add_field(name="Location", value=tournament['location'], inline=False)
-            embed.add_field(name="Date", value=tournament['date'], inline=True)
-            embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
-            embed.add_field(name="Registration Open", value="Yes" if tournament['registration_open'] else "No", inline=True)
+    channel = client.get_channel(CHANNEL_ID)
 
-            # Add Tier only if it exists
-            if tournament['tier']:
-                embed.add_field(name="Tier", value=tournament['tier'], inline=False)
+    # Send messages for new tournaments
+    for tournament in new_tournaments:
+        # Inside the loop where we create the embed
+        embed = discord.Embed(
+            title="🚨 New Local Tournament 🚨",
+            description=f"[{tournament['name']}]({tournament['url']})",  # Clickable link in the description
+            color=discord.Color.blue()
+        )
+        embed.add_field(name="Location", value=tournament['location'], inline=False)
+        embed.add_field(name="Date", value=tournament['date'], inline=True)
+        embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
+        embed.add_field(name="Registration Open", value="Yes" if tournament['registration_open'] else "No", inline=True)
 
-            await channel.send(embed=embed)
+        if tournament['tier']:
+            embed.add_field(name="Tier", value=tournament['tier'], inline=False)
 
+        await channel.send(embed=embed)
+
+    # Send messages for tournaments with newly opened registration
+    for tournament in registration_opened:
+        embed = discord.Embed(
+            title="📖 Registration Open 📖",
+            description=f"[{tournament['name']}]({tournament['url']})",  # Clickable link in the description
+            color=discord.Color.green()
+        )
+        embed.add_field(name="Name", value=tournament['name'], inline=False)
+        embed.add_field(name="Location", value=tournament['location'], inline=False)
+        embed.add_field(name="Date", value=tournament['date'], inline=True)
+        embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
+
+        await channel.send(embed=embed)
 
 # Run the bot
 client.run(TOKEN)
