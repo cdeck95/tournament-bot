@@ -17,7 +17,7 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 TOURNAMENTS_FILE = "tournaments.json"
-TOURNAMENT_PAGE_URL = "https://www.discgolfscene.com/tournaments/options;distance=100;zip=08043;country=USA"
+TOURNAMENT_PAGE_URL = "https://www.discgolfscene.com/tournaments/options;distance=60;zip=08043;country=USA"
 
 def fetch_tournaments():
     response = requests.get(TOURNAMENT_PAGE_URL)
