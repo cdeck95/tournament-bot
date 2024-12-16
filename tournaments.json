@@ -1,14 +1,5 @@
 [
     {
-        "name": "The Give Back",
-        "url": "https://www.discgolfscene.com/tournaments/The_Give_Back_2024",
-        "registration_open": true,
-        "location": "at Herr Park \u00b7 Lancaster, PA",
-        "date": "12/21/2024",
-        "registrants": 72,
-        "tier": "C-tier"
-    },
-    {
         "name": "Tyler Tags Finale 2024 - Free Tournament for 2024 Tagholders",
         "url": "https://www.discgolfscene.com/tournaments/Tyler_Tags_Finale_2024_Free_Tournament_for_2024_Tagholders",
         "registration_open": true,
@@ -16,6 +7,15 @@
         "date": "12/21/2024",
         "registrants": 8,
         "tier": ""
+    },
+    {
+        "name": "The Give Back",
+        "url": "https://www.discgolfscene.com/tournaments/The_Give_Back_2024",
+        "registration_open": true,
+        "location": "at Herr Park \u00b7 Lancaster, PA",
+        "date": "12/21/2024",
+        "registrants": 72,
+        "tier": "C-tier"
     },
     {
         "name": "Krampus 5 presented by B.S. Upshot",
@@ -90,21 +90,21 @@
         "tier": ""
     },
     {
-        "name": "3rd Annual Poconos Putting League",
-        "url": "https://www.discgolfscene.com/tournaments/3rd_Annual_Poconos_Putting_League_2025",
-        "registration_open": false,
-        "location": "at Sherman Theater \u00b7 Stroudsburg , PA",
-        "date": "N/A",
-        "registrants": 14,
-        "tier": ""
-    },
-    {
         "name": "3rd Annual Poconos Putting League Sponsored by MVP Disc Sports",
         "url": "https://www.discgolfscene.com/tournaments/3rd_Annual_Poconos_Putting_League_Sponsored_by_MVP_Disc_Sports_2025",
         "registration_open": false,
         "location": "at Sherman Theater \u00b7 Stroudsburg , PA",
         "date": "01/08/2025",
         "registrants": 21,
+        "tier": ""
+    },
+    {
+        "name": "3rd Annual Poconos Putting League",
+        "url": "https://www.discgolfscene.com/tournaments/3rd_Annual_Poconos_Putting_League_2025",
+        "registration_open": false,
+        "location": "at Sherman Theater \u00b7 Stroudsburg , PA",
+        "date": "N/A",
+        "registrants": 14,
         "tier": ""
     },
     {
@@ -117,19 +117,19 @@
         "tier": "C-tier"
     },
     {
-        "name": "DiscPrint Presents: Ockie Wisting Veterans for Vets 2025",
-        "url": "https://www.discgolfscene.com/tournaments/DiscPrint_Presents_Veterans_for_Vets_2025",
+        "name": "Somo Sno Bowl",
+        "url": "https://www.discgolfscene.com/tournaments/Somo_Sno_Bowl_2025",
         "registration_open": false,
-        "location": "at Ockie Wisting Recreation Complex \u00b7 Rio Grande, NJ",
+        "location": "at South Mountain Park \u00b7 Bethlehem, PA",
         "date": "01/25/2025",
         "registrants": 0,
         "tier": ""
     },
     {
-        "name": "Somo Sno Bowl",
-        "url": "https://www.discgolfscene.com/tournaments/Somo_Sno_Bowl_2025",
+        "name": "DiscPrint Presents: Ockie Wisting Veterans for Vets 2025",
+        "url": "https://www.discgolfscene.com/tournaments/DiscPrint_Presents_Veterans_for_Vets_2025",
         "registration_open": false,
-        "location": "at South Mountain Park \u00b7 Bethlehem, PA",
+        "location": "at Ockie Wisting Recreation Complex \u00b7 Rio Grande, NJ",
         "date": "01/25/2025",
         "registrants": 0,
         "tier": ""
@@ -162,15 +162,6 @@
         "tier": ""
     },
     {
-        "name": "22nd Annual Tyler Ice Bowl",
-        "url": "https://www.discgolfscene.com/tournaments/22nd_Annual_Tyler_Ice_Bowl_2024",
-        "registration_open": true,
-        "location": "at Tyler State Park \u00b7 Newtown, PA",
-        "date": "02/01/2025",
-        "registrants": 3,
-        "tier": ""
-    },
-    {
         "name": "2025 Buzzy\u2019s Ice Bowl",
         "url": "https://www.discgolfscene.com/tournaments/2025_Buzzy_s_Ice_Bowl_2025",
         "registration_open": true,
@@ -180,13 +171,13 @@
         "tier": "XC-tier"
     },
     {
-        "name": "Geibel Classic - Vol. V",
-        "url": "https://www.discgolfscene.com/tournaments/Geibel_Classic_Vol_V_2025",
+        "name": "22nd Annual Tyler Ice Bowl",
+        "url": "https://www.discgolfscene.com/tournaments/22nd_Annual_Tyler_Ice_Bowl_2024",
         "registration_open": true,
-        "location": "at D. F. Buchmiller Park \u00b7 Lancaster, PA",
-        "date": "02/02/2025",
-        "registrants": 11,
-        "tier": "C-tier"
+        "location": "at Tyler State Park \u00b7 Newtown, PA",
+        "date": "02/01/2025",
+        "registrants": 3,
+        "tier": ""
     },
     {
         "name": "2nd Annual February Freeze",
@@ -204,6 +195,15 @@
         "location": "at Mercer County Park \u00b7 Princeton Junction, NJ",
         "date": "02/02/2025",
         "registrants": 10,
+        "tier": "C-tier"
+    },
+    {
+        "name": "Geibel Classic - Vol. V",
+        "url": "https://www.discgolfscene.com/tournaments/Geibel_Classic_Vol_V_2025",
+        "registration_open": true,
+        "location": "at D. F. Buchmiller Park \u00b7 Lancaster, PA",
+        "date": "02/02/2025",
+        "registrants": 11,
         "tier": "C-tier"
     },
     {

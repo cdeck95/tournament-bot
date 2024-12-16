@@ -40,7 +40,7 @@ def fetch_tournaments():
         registration_open = "trego" in title_em.get("class", []) if title_em else False
         
         # Extract registrants and location
-        registrants_span = div.find("span", text=lambda x: x and "Registrants:" in x)
+        registrants_span = div.find("span", string=lambda x: x and "Registrants:" in x)
         registrants = 0  # Default to 0 if registrants span is missing
         if registrants_span:
             try:
@@ -49,7 +49,7 @@ def fetch_tournaments():
                 registrants = 0  # Default to 0 if parsing fails
 
         # Find location span (next <span> after registrants or empty span)
-        location_span = registrants_span.find_next("span") if registrants_span else div.find("span", text=lambda x: x and "at" in x)
+        location_span = registrants_span.find_next("span") if registrants_span else div.find("span", string=lambda x: x and "at" in x)
         location = location_span.text.strip() if location_span else "N/A"
         
         # Parse and format date
