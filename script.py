@@ -136,20 +136,30 @@ async def check_tournaments():
     tournaments = fetch_tournaments()
     new_tournaments, registration_opened = save_tournaments(tournaments)
 
+    if not new_tournaments:
+        print("No new tournaments found.")
+    if not registration_opened:
+        print("No tournaments with newly opened registration found.")
+
     channel = client.get_channel(CHANNEL_ID)
 
     # Send messages for new tournaments
     for tournament in new_tournaments:
+        print(f"New tournament: {tournament['name']}")
         # Inside the loop where we create the embed
         embed = discord.Embed(
             title="🚨 New Local Tournament 🚨",
-            description=f"[{tournament['name']}]({tournament['url']})",  # Clickable link in the description
+            description=f"[{tournament['name']}]({tournament['url']})\n\n"
+                        f"**Location:** {tournament['location']}\n"
+                        f"**Date:** {tournament['date']}\n"
+                        f"**Registrants:** {tournament['registrants']}\n"
+                        f"**Registration Open:** {'Yes' if tournament['registration_open'] else 'No'}",
             color=discord.Color.blue()
         )
-        embed.add_field(name="Location", value=tournament['location'], inline=False)
-        embed.add_field(name="Date", value=tournament['date'], inline=True)
-        embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
-        embed.add_field(name="Registration Open", value="Yes" if tournament['registration_open'] else "No", inline=True)
+        # embed.add_field(name="Location", value=tournament['location'], inline=False)
+        # embed.add_field(name="Date", value=tournament['date'], inline=True)
+        # embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
+        # embed.add_field(name="Registration Open", value="Yes" if tournament['registration_open'] else "No", inline=True)
 
         if tournament['tier']:
             embed.add_field(name="Tier", value=tournament['tier'], inline=False)
@@ -158,15 +168,19 @@ async def check_tournaments():
 
     # Send messages for tournaments with newly opened registration
     for tournament in registration_opened:
+        print(f"Registration opened: {tournament['name']}")
         embed = discord.Embed(
             title="📖 Registration Open 📖",
-            description=f"[{tournament['name']}]({tournament['url']})",  # Clickable link in the description
+            description=f"[{tournament['name']}]({tournament['url']})\n\n"
+                        f"**Location:** {tournament['location']}\n"
+                        f"**Date:** {tournament['date']}\n"
+                        f"**Registrants:** {tournament['registrants']}\n"
+                        f"**Registration Open:** {'Yes' if tournament['registration_open'] else 'No'}",
             color=discord.Color.green()
         )
-        embed.add_field(name="Name", value=tournament['name'], inline=False)
-        embed.add_field(name="Location", value=tournament['location'], inline=False)
-        embed.add_field(name="Date", value=tournament['date'], inline=True)
-        embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
+        if tournament['tier']:
+            embed.add_field(name="Tier", value=tournament['tier'], inline=False)
+        
 
         await channel.send(embed=embed)
 
