@@ -27,21 +27,21 @@
         "tier": ""
     },
     {
-        "name": "Silver Bells V",
-        "url": "https://www.discgolfscene.com/tournaments/Silver_Bells_V_2024",
-        "registration_open": true,
-        "location": "at Ship Rock Disc Golf \u00b7 Lancaster, PA",
-        "date": "12/22/2024",
-        "registrants": 90,
-        "tier": "C-tier"
-    },
-    {
         "name": "Shotgun @ the Grove VII",
         "url": "https://www.discgolfscene.com/tournaments/Shotgun_at_the_Grove_VII_2024",
         "registration_open": true,
         "location": "at The Grove at Thompson Grove Park \u00b7 Manalapan, NJ",
         "date": "12/22/2024",
         "registrants": 24,
+        "tier": "C-tier"
+    },
+    {
+        "name": "Silver Bells V",
+        "url": "https://www.discgolfscene.com/tournaments/Silver_Bells_V_2024",
+        "registration_open": true,
+        "location": "at Ship Rock Disc Golf \u00b7 Lancaster, PA",
+        "date": "12/22/2024",
+        "registrants": 90,
         "tier": "C-tier"
     },
     {
@@ -117,15 +117,6 @@
         "tier": "C-tier"
     },
     {
-        "name": "Somo Sno Bowl",
-        "url": "https://www.discgolfscene.com/tournaments/Somo_Sno_Bowl_2025",
-        "registration_open": false,
-        "location": "at South Mountain Park \u00b7 Bethlehem, PA",
-        "date": "01/25/2025",
-        "registrants": 0,
-        "tier": ""
-    },
-    {
         "name": "Whitaker Woods Upshot 2 presented by B.S. Upshot",
         "url": "https://www.discgolfscene.com/tournaments/Whitaker_Woods_Upshot_2025",
         "registration_open": true,
@@ -141,6 +132,15 @@
         "location": "at Beaver Branch - Private Course \u00b7 Townsend, DE",
         "date": "01/25/2025",
         "registrants": 3,
+        "tier": ""
+    },
+    {
+        "name": "Somo Sno Bowl",
+        "url": "https://www.discgolfscene.com/tournaments/Somo_Sno_Bowl_2025",
+        "registration_open": false,
+        "location": "at South Mountain Park \u00b7 Bethlehem, PA",
+        "date": "01/25/2025",
+        "registrants": 0,
         "tier": ""
     },
     {
@@ -162,15 +162,6 @@
         "tier": ""
     },
     {
-        "name": "2025 Buzzy\u2019s Ice Bowl",
-        "url": "https://www.discgolfscene.com/tournaments/2025_Buzzy_s_Ice_Bowl_2025",
-        "registration_open": true,
-        "location": "at Browns Point/Buzzy's Creek \u00b7 West Milford, NJ",
-        "date": "02/01/2025",
-        "registrants": 16,
-        "tier": "XC-tier"
-    },
-    {
         "name": "22nd Annual Tyler Ice Bowl",
         "url": "https://www.discgolfscene.com/tournaments/22nd_Annual_Tyler_Ice_Bowl_2024",
         "registration_open": true,
@@ -180,13 +171,13 @@
         "tier": ""
     },
     {
-        "name": "Geibel Classic - Vol. V",
-        "url": "https://www.discgolfscene.com/tournaments/Geibel_Classic_Vol_V_2025",
+        "name": "2025 Buzzy\u2019s Ice Bowl",
+        "url": "https://www.discgolfscene.com/tournaments/2025_Buzzy_s_Ice_Bowl_2025",
         "registration_open": true,
-        "location": "at D. F. Buchmiller Park \u00b7 Lancaster, PA",
-        "date": "02/02/2025",
-        "registrants": 11,
-        "tier": "C-tier"
+        "location": "at Browns Point/Buzzy's Creek \u00b7 West Milford, NJ",
+        "date": "02/01/2025",
+        "registrants": 16,
+        "tier": "XC-tier"
     },
     {
         "name": "Discinsanity Mystery Disc Challenge 2025",
@@ -213,6 +204,15 @@
         "location": "at Mercer County Park \u00b7 Princeton Junction, NJ",
         "date": "02/02/2025",
         "registrants": 10,
+        "tier": "C-tier"
+    },
+    {
+        "name": "Geibel Classic - Vol. V",
+        "url": "https://www.discgolfscene.com/tournaments/Geibel_Classic_Vol_V_2025",
+        "registration_open": true,
+        "location": "at D. F. Buchmiller Park \u00b7 Lancaster, PA",
+        "date": "02/02/2025",
+        "registrants": 11,
         "tier": "C-tier"
     },
     {
@@ -248,7 +248,7 @@
         "registration_open": true,
         "location": "at White Clay Creek State Park \u00b7 Newark, DE",
         "date": "02/28/2025",
-        "registrants": 95,
+        "registrants": 101,
         "tier": ""
     },
     {
@@ -270,21 +270,21 @@
         "tier": "Doubles"
     },
     {
-        "name": "Harmony Spring Sling (First Annual)",
-        "url": "https://www.discgolfscene.com/tournaments/Harmony_Spring_Sling_First_Annual_2025",
-        "registration_open": false,
-        "location": "at Harmony Disc Golf Course \u00b7 Phillipsburg, NJ",
-        "date": "03/29/2025",
-        "registrants": 0,
-        "tier": ""
-    },
-    {
         "name": "King and Queen of CCDG 25'",
         "url": "https://www.discgolfscene.com/tournaments/King_and_Queen_of_CCDG_25_2025",
         "registration_open": true,
         "location": "at Dry Hop Pond \u00b7 Conowingo, MD",
         "date": "03/29/2025",
         "registrants": 2,
+        "tier": ""
+    },
+    {
+        "name": "Harmony Spring Sling (First Annual)",
+        "url": "https://www.discgolfscene.com/tournaments/Harmony_Spring_Sling_First_Annual_2025",
+        "registration_open": false,
+        "location": "at Harmony Disc Golf Course \u00b7 Phillipsburg, NJ",
+        "date": "03/29/2025",
+        "registrants": 0,
         "tier": ""
     },
     {
@@ -306,15 +306,6 @@
         "tier": ""
     },
     {
-        "name": "DRDDG OPEN 2025",
-        "url": "https://www.discgolfscene.com/tournaments/DRDDG_OPEN_2025",
-        "registration_open": false,
-        "location": "at Oak Ridge Park \u00b7 Clark, NJ",
-        "date": "04/26/2025",
-        "registrants": 0,
-        "tier": ""
-    },
-    {
         "name": "Throw The Distance Triples (4th Annual) - Helping Families Fight Cancer (CEP Charity - Unrated)",
         "url": "https://www.discgolfscene.com/tournaments/Throw_The_Distance_Triples_4th_Annual_Helping_Families_Fight_Cancer_CEP_Charity_Unrated_2025",
         "registration_open": false,
@@ -322,6 +313,15 @@
         "date": "04/26/2025",
         "registrants": 0,
         "tier": "Teams \u00b7 XC-tier"
+    },
+    {
+        "name": "DRDDG OPEN 2025",
+        "url": "https://www.discgolfscene.com/tournaments/DRDDG_OPEN_2025",
+        "registration_open": false,
+        "location": "at Oak Ridge Park \u00b7 Clark, NJ",
+        "date": "04/26/2025",
+        "registrants": 0,
+        "tier": ""
     },
     {
         "name": "Summer Fling Pro-Am sponsored by UnderPar and Dynamic Discs",

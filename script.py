@@ -130,7 +130,7 @@ async def on_ready():
         check_tournaments.start()  # Start the periodic task
 
 
-@tasks.loop(minutes=60)  # Run every hour
+@tasks.loop(minutes=15)  # Run every 15 min
 async def check_tournaments():
     print("Checking for new tournaments...")
     tournaments = fetch_tournaments()
