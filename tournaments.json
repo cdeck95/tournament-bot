@@ -1,14 +1,5 @@
 [
     {
-        "name": "Tyler Tags Finale 2024 - Free Tournament for 2024 Tagholders",
-        "url": "https://www.discgolfscene.com/tournaments/Tyler_Tags_Finale_2024_Free_Tournament_for_2024_Tagholders",
-        "registration_open": true,
-        "location": "at Tyler State Park \u00b7 Newtown, PA",
-        "date": "12/21/2024",
-        "registrants": 8,
-        "tier": ""
-    },
-    {
         "name": "The Give Back",
         "url": "https://www.discgolfscene.com/tournaments/The_Give_Back_2024",
         "registration_open": true,
@@ -27,13 +18,13 @@
         "tier": "C-tier"
     },
     {
-        "name": "Shotgun @ the Grove VII",
-        "url": "https://www.discgolfscene.com/tournaments/Shotgun_at_the_Grove_VII_2024",
+        "name": "Tyler Tags Finale 2024 - Free Tournament for 2024 Tagholders",
+        "url": "https://www.discgolfscene.com/tournaments/Tyler_Tags_Finale_2024_Free_Tournament_for_2024_Tagholders",
         "registration_open": true,
-        "location": "at The Grove at Thompson Grove Park \u00b7 Manalapan, NJ",
-        "date": "12/22/2024",
-        "registrants": 24,
-        "tier": "C-tier"
+        "location": "at Tyler State Park \u00b7 Newtown, PA",
+        "date": "12/21/2024",
+        "registrants": 8,
+        "tier": ""
     },
     {
         "name": "Silver Bells V",
@@ -42,6 +33,15 @@
         "location": "at Ship Rock Disc Golf \u00b7 Lancaster, PA",
         "date": "12/22/2024",
         "registrants": 90,
+        "tier": "C-tier"
+    },
+    {
+        "name": "Shotgun @ the Grove VII",
+        "url": "https://www.discgolfscene.com/tournaments/Shotgun_at_the_Grove_VII_2024",
+        "registration_open": true,
+        "location": "at The Grove at Thompson Grove Park \u00b7 Manalapan, NJ",
+        "date": "12/22/2024",
+        "registrants": 24,
         "tier": "C-tier"
     },
     {
@@ -54,21 +54,21 @@
         "tier": ""
     },
     {
-        "name": "DRDDG Disc Golf 2024 Membership",
-        "url": "https://www.discgolfscene.com/tournaments/DRDDG_Disc_Golf_2024_Membership",
-        "registration_open": true,
-        "location": "at South Vineland Park \u00b7 Vineland, NJ",
-        "date": "12/31/2024",
-        "registrants": 0,
-        "tier": ""
-    },
-    {
         "name": "Druid Hill Disc Golf Club Club Membership 2024",
         "url": "https://www.discgolfscene.com/tournaments/Druid_Hill_Disc_Golf_Club_Club_Membership_2023_2024",
         "registration_open": true,
         "location": "at Druid Hill Park \u00b7 Baltimore, MD",
         "date": "12/31/2024",
         "registrants": 121,
+        "tier": ""
+    },
+    {
+        "name": "DRDDG Disc Golf 2024 Membership",
+        "url": "https://www.discgolfscene.com/tournaments/DRDDG_Disc_Golf_2024_Membership",
+        "registration_open": true,
+        "location": "at South Vineland Park \u00b7 Vineland, NJ",
+        "date": "12/31/2024",
+        "registrants": 0,
         "tier": ""
     },
     {
@@ -90,21 +90,21 @@
         "tier": ""
     },
     {
-        "name": "3rd Annual Poconos Putting League Sponsored by MVP Disc Sports",
-        "url": "https://www.discgolfscene.com/tournaments/3rd_Annual_Poconos_Putting_League_Sponsored_by_MVP_Disc_Sports_2025",
-        "registration_open": false,
-        "location": "at Sherman Theater \u00b7 Stroudsburg , PA",
-        "date": "01/08/2025",
-        "registrants": 21,
-        "tier": ""
-    },
-    {
         "name": "3rd Annual Poconos Putting League",
         "url": "https://www.discgolfscene.com/tournaments/3rd_Annual_Poconos_Putting_League_2025",
         "registration_open": false,
         "location": "at Sherman Theater \u00b7 Stroudsburg , PA",
         "date": "N/A",
         "registrants": 14,
+        "tier": ""
+    },
+    {
+        "name": "3rd Annual Poconos Putting League Sponsored by MVP Disc Sports",
+        "url": "https://www.discgolfscene.com/tournaments/3rd_Annual_Poconos_Putting_League_Sponsored_by_MVP_Disc_Sports_2025",
+        "registration_open": false,
+        "location": "at Sherman Theater \u00b7 Stroudsburg , PA",
+        "date": "01/08/2025",
+        "registrants": 21,
         "tier": ""
     },
     {
@@ -126,15 +126,6 @@
         "tier": ""
     },
     {
-        "name": "DiscPrint Presents: Ockie Wisting Veterans for Vets 2025",
-        "url": "https://www.discgolfscene.com/tournaments/DiscPrint_Presents_Veterans_for_Vets_2025",
-        "registration_open": false,
-        "location": "at Ockie Wisting Recreation Complex \u00b7 Rio Grande, NJ",
-        "date": "01/25/2025",
-        "registrants": 0,
-        "tier": ""
-    },
-    {
         "name": "Whitaker Woods Upshot 2 presented by B.S. Upshot",
         "url": "https://www.discgolfscene.com/tournaments/Whitaker_Woods_Upshot_2025",
         "registration_open": true,
@@ -150,6 +141,15 @@
         "location": "at Beaver Branch - Private Course \u00b7 Townsend, DE",
         "date": "01/25/2025",
         "registrants": 3,
+        "tier": ""
+    },
+    {
+        "name": "DiscPrint Presents: Ockie Wisting Veterans for Vets 2025",
+        "url": "https://www.discgolfscene.com/tournaments/DiscPrint_Presents_Veterans_for_Vets_2025",
+        "registration_open": false,
+        "location": "at Ockie Wisting Recreation Complex \u00b7 Rio Grande, NJ",
+        "date": "01/25/2025",
+        "registrants": 0,
         "tier": ""
     },
     {
@@ -180,24 +180,6 @@
         "tier": ""
     },
     {
-        "name": "2nd Annual February Freeze",
-        "url": "https://www.discgolfscene.com/tournaments/2nd_Annual_February_Freeze_2025",
-        "registration_open": true,
-        "location": "at Doc Cramer DGC \u00b7 Manahawkin, NJ",
-        "date": "02/02/2025",
-        "registrants": 1,
-        "tier": "C-tier"
-    },
-    {
-        "name": "Groundhog Day Open - made possible by the MCDGC",
-        "url": "https://www.discgolfscene.com/tournaments/Groundhog_Day_Open_made_possible_by_the_MCDGC_2025",
-        "registration_open": true,
-        "location": "at Mercer County Park \u00b7 Princeton Junction, NJ",
-        "date": "02/02/2025",
-        "registrants": 10,
-        "tier": "C-tier"
-    },
-    {
         "name": "Geibel Classic - Vol. V",
         "url": "https://www.discgolfscene.com/tournaments/Geibel_Classic_Vol_V_2025",
         "registration_open": true,
@@ -214,6 +196,24 @@
         "date": "02/02/2025",
         "registrants": 0,
         "tier": ""
+    },
+    {
+        "name": "2nd Annual February Freeze",
+        "url": "https://www.discgolfscene.com/tournaments/2nd_Annual_February_Freeze_2025",
+        "registration_open": true,
+        "location": "at Doc Cramer DGC \u00b7 Manahawkin, NJ",
+        "date": "02/02/2025",
+        "registrants": 1,
+        "tier": "C-tier"
+    },
+    {
+        "name": "Groundhog Day Open - made possible by the MCDGC",
+        "url": "https://www.discgolfscene.com/tournaments/Groundhog_Day_Open_made_possible_by_the_MCDGC_2025",
+        "registration_open": true,
+        "location": "at Mercer County Park \u00b7 Princeton Junction, NJ",
+        "date": "02/02/2025",
+        "registrants": 10,
+        "tier": "C-tier"
     },
     {
         "name": "Glow at Tyler 2",
@@ -270,21 +270,21 @@
         "tier": "Doubles"
     },
     {
-        "name": "King and Queen of CCDG 25'",
-        "url": "https://www.discgolfscene.com/tournaments/King_and_Queen_of_CCDG_25_2025",
-        "registration_open": true,
-        "location": "at Dry Hop Pond \u00b7 Conowingo, MD",
-        "date": "03/29/2025",
-        "registrants": 2,
-        "tier": ""
-    },
-    {
         "name": "Harmony Spring Sling (First Annual)",
         "url": "https://www.discgolfscene.com/tournaments/Harmony_Spring_Sling_First_Annual_2025",
         "registration_open": false,
         "location": "at Harmony Disc Golf Course \u00b7 Phillipsburg, NJ",
         "date": "03/29/2025",
         "registrants": 0,
+        "tier": ""
+    },
+    {
+        "name": "King and Queen of CCDG 25'",
+        "url": "https://www.discgolfscene.com/tournaments/King_and_Queen_of_CCDG_25_2025",
+        "registration_open": true,
+        "location": "at Dry Hop Pond \u00b7 Conowingo, MD",
+        "date": "03/29/2025",
+        "registrants": 2,
         "tier": ""
     },
     {
