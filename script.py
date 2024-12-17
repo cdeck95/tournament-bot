@@ -6,11 +6,20 @@ import requests
 from bs4 import BeautifulSoup
 import json
 from datetime import datetime
+import boto3
+from botocore.exceptions import ClientError
 
 # Load environment variables
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = int(os.getenv('DISCORD_CHANNEL_ID'))  # Discord channel ID as integer
+
+# AWS S3 Config
+S3_BUCKET_NAME = "discord-bot-public-files"
+S3_FILE_KEY = "tournaments.json"
+
+# Initialize S3 client
+s3 = boto3.client('s3')
 
 # Discord client
 intents = discord.Intents.default()
@@ -25,6 +34,7 @@ def fetch_tournaments():
     
     tournaments = []
     tournament_divs = soup.select(".tournament-U, .tournament-C")
+    print("Found", len(tournament_divs), "tournaments")
     
     # Current date for year handling
     now = datetime.now()
@@ -88,13 +98,33 @@ def fetch_tournaments():
 
     return tournaments
 
-def save_tournaments(tournaments):
-    if not os.path.exists(TOURNAMENTS_FILE):
-        with open(TOURNAMENTS_FILE, "w") as f:
-            json.dump([], f)
+def load_tournaments_from_s3():
+    try:
+        response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=S3_FILE_KEY)
+        content = response['Body'].read().decode('utf-8')
+        return json.loads(content)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchKey':
+            print("No tournaments file found in S3. Initializing empty list.")
+            return []  # If file doesn't exist, return an empty list
+        else:
+            raise e
 
-    with open(TOURNAMENTS_FILE, "r") as f:
-        saved_tournaments = json.load(f)
+def save_tournaments_to_s3(tournaments):
+    try:
+        s3.put_object(
+            Bucket=S3_BUCKET_NAME,
+            Key=S3_FILE_KEY,
+            Body=json.dumps(tournaments, indent=4),
+            ContentType="application/json"
+        )
+    except ClientError as e:
+        print(f"Error saving tournaments to S3: {e}")
+        raise e
+
+def save_tournaments(tournaments):
+    saved_tournaments = load_tournaments_from_s3()
+    print("Loaded", len(saved_tournaments), "saved tournaments")
 
     # Identify new tournaments (unique by name, date, and location)
     new_tournaments = [
@@ -117,9 +147,8 @@ def save_tournaments(tournaments):
                 current.get("registration_open", False)):
                 registration_opened.append(current)
 
-    # Save the updated tournaments list
-    with open(TOURNAMENTS_FILE, "w") as f:
-        json.dump(tournaments, f, indent=4)
+    # Save the updated tournaments list back to S3
+    save_tournaments_to_s3(tournaments)
 
     return new_tournaments, registration_opened
 
