@@ -46,7 +46,7 @@ def fetch_tournaments():
     
     tournaments = []
     tournament_divs = soup.select(".tournament-U, .tournament-C")
-    logging.info("Found", len(tournament_divs), "tournaments")
+    logging.info(f"Found {len(tournament_divs)} tournaments")
     
     # Current date for year handling
     now = datetime.now()
@@ -131,12 +131,12 @@ def save_tournaments_to_s3(tournaments):
             ContentType="application/json"
         )
     except ClientError as e:
-        logging.error(f"Error saving tournaments to S3: {e}")
+        logging.error(f'Error saving tournaments to S3: {e}')
         raise e
 
 def save_tournaments(tournaments):
     saved_tournaments = load_tournaments_from_s3()
-    logging.info("Loaded", len(saved_tournaments), "saved tournaments")
+    logging.info(f"Loaded {len(saved_tournaments)} saved tournaments")
 
     # Identify new tournaments (unique by name, date, and location)
     new_tournaments = [
@@ -186,7 +186,8 @@ async def check_tournaments():
 
     # Send messages for new tournaments
     for tournament in new_tournaments:
-        logging.info(f"New tournament: {tournament['name']}")
+        logging.info(f'New tournament: {tournament['name']}')
+
         # Inside the loop where we create the embed
         embed = discord.Embed(
             title="🚨 New Local Tournament 🚨",
@@ -209,7 +210,7 @@ async def check_tournaments():
 
     # Send messages for tournaments with newly opened registration
     for tournament in registration_opened:
-        logging.info(f"Registration opened: {tournament['name']}")
+        logging.info(f'Registration opened: {tournament['name']}')
         embed = discord.Embed(
             title="📖 Registration Open 📖",
             description=f"[{tournament['name']}]({tournament['url']})\n\n"
