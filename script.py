@@ -8,6 +8,18 @@ import json
 from datetime import datetime
 import boto3
 from botocore.exceptions import ClientError
+import logging
+import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,  # Set the minimum log level to INFO
+    format="%(asctime)s - %(levelname)s - %(message)s",  # Log format with timestamp
+    handlers=[
+        logging.StreamHandler(sys.stdout),  # Send logs to standard output
+        logging.FileHandler("bot.log", encoding="utf-8")  # Optional: Save logs to a file
+    ]
+)
 
 # Load environment variables
 load_dotenv()
@@ -34,7 +46,7 @@ def fetch_tournaments():
     
     tournaments = []
     tournament_divs = soup.select(".tournament-U, .tournament-C")
-    print("Found", len(tournament_divs), "tournaments")
+    logging.info("Found", len(tournament_divs), "tournaments")
     
     # Current date for year handling
     now = datetime.now()
@@ -105,7 +117,7 @@ def load_tournaments_from_s3():
         return json.loads(content)
     except ClientError as e:
         if e.response['Error']['Code'] == 'NoSuchKey':
-            print("No tournaments file found in S3. Initializing empty list.")
+            logging.error("No tournaments file found in S3. Initializing empty list.")
             return []  # If file doesn't exist, return an empty list
         else:
             raise e
@@ -119,12 +131,12 @@ def save_tournaments_to_s3(tournaments):
             ContentType="application/json"
         )
     except ClientError as e:
-        print(f"Error saving tournaments to S3: {e}")
+        logging.error(f"Error saving tournaments to S3: {e}")
         raise e
 
 def save_tournaments(tournaments):
     saved_tournaments = load_tournaments_from_s3()
-    print("Loaded", len(saved_tournaments), "saved tournaments")
+    logging.info("Loaded", len(saved_tournaments), "saved tournaments")
 
     # Identify new tournaments (unique by name, date, and location)
     new_tournaments = [
@@ -154,27 +166,27 @@ def save_tournaments(tournaments):
 
 @client.event
 async def on_ready():
-    print(f'{client.user} has connected to Discord!')
+    logging.info(f'{client.user} has connected to Discord!')
     if not check_tournaments.is_running():  # Ensure the task is not already running
         check_tournaments.start()  # Start the periodic task
 
 
 @tasks.loop(minutes=15)  # Run every 15 min
 async def check_tournaments():
-    print("Checking for new tournaments...")
+    logging.info("Checking for new tournaments...")
     tournaments = fetch_tournaments()
     new_tournaments, registration_opened = save_tournaments(tournaments)
 
     if not new_tournaments:
-        print("No new tournaments found.")
+        logging.debug("No new tournaments found.")
     if not registration_opened:
-        print("No tournaments with newly opened registration found.")
+        logging.debug("No tournaments with newly opened registration found.")
 
     channel = client.get_channel(CHANNEL_ID)
 
     # Send messages for new tournaments
     for tournament in new_tournaments:
-        print(f"New tournament: {tournament['name']}")
+        logging.info(f"New tournament: {tournament['name']}")
         # Inside the loop where we create the embed
         embed = discord.Embed(
             title="🚨 New Local Tournament 🚨",
@@ -197,7 +209,7 @@ async def check_tournaments():
 
     # Send messages for tournaments with newly opened registration
     for tournament in registration_opened:
-        print(f"Registration opened: {tournament['name']}")
+        logging.info(f"Registration opened: {tournament['name']}")
         embed = discord.Embed(
             title="📖 Registration Open 📖",
             description=f"[{tournament['name']}]({tournament['url']})\n\n"
