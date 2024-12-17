@@ -186,7 +186,7 @@ async def check_tournaments():
 
     # Send messages for new tournaments
     for tournament in new_tournaments:
-        logging.info(f'New tournament: {tournament['name']}')
+        logging.info(f"New tournament: {tournament['name']}")
 
         # Inside the loop where we create the embed
         embed = discord.Embed(
@@ -210,7 +210,8 @@ async def check_tournaments():
 
     # Send messages for tournaments with newly opened registration
     for tournament in registration_opened:
-        logging.info(f'Registration opened: {tournament['name']}')
+        logging.info(f"Registration opened: {tournament['name']}")
+
         embed = discord.Embed(
             title="📖 Registration Open 📖",
             description=f"[{tournament['name']}]({tournament['url']})\n\n"
