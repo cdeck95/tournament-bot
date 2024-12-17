@@ -178,9 +178,9 @@ async def check_tournaments():
     new_tournaments, registration_opened = save_tournaments(tournaments)
 
     if not new_tournaments:
-        logging.debug("No new tournaments found.")
+        logging.info("No new tournaments found.")
     if not registration_opened:
-        logging.debug("No tournaments with newly opened registration found.")
+        logging.info("No tournaments with newly opened registration found.")
 
     channel = client.get_channel(CHANNEL_ID)
 
