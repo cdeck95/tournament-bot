@@ -249,11 +249,6 @@ def save_tournaments(tournaments):
     filling_up = []
 
     for current in tournaments:
-        # Check for new registration openings
-        if current["name"] == "FROZEN Branch Pro-Am sponsored by UnderPar and Dynamic Discs":
-            # reset registration_closing_sent
-            current["registration_closing_sent"] = False
-
         for saved in saved_tournaments:
             if (current["name"] == saved["name"] and
                 current["date"] == saved["date"] and
