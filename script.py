@@ -233,15 +233,11 @@ def save_tournaments(tournaments):
 
     for current in tournaments:
         # Check for new registration openings
-        if current["name"] == "FROZEN Branch Pro-Am sponsored by UnderPar and Dynamic Discs" or current["name"] == "Somo Sno Bowl" or current["name"] == "Whitaker Woods Upshot 2 presented by B.S. Upshot":
+        if current["name"] == "FROZEN Branch Pro-Am sponsored by UnderPar and Dynamic Discs" or current["name"] == "Whitaker Woods Upshot 2 presented by B.S. Upshot":
             # reset registration_closing_sent
             current["registration_closing_sent"] = False
 
         for saved in saved_tournaments:
-            if saved["name"] == "FROZEN Branch Pro-Am sponsored by UnderPar and Dynamic Discs" or saved["name"] == "Somo Sno Bowl" or saved["name"] == "Whitaker Woods Upshot 2 presented by B.S. Upshot":
-                # reset registration_closing_sent
-                print(saved)
-                saved["registration_closing_sent"] = False
             if (current["name"] == saved["name"] and
                 current["date"] == saved["date"] and
                 current["location"] == saved["location"] and
