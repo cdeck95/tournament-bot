@@ -123,6 +123,12 @@ def load_tournaments_from_s3():
             raise e
 
 def save_tournaments_to_s3(tournaments):
+    if not tournaments:
+        logging.error("No tournaments to save. Skipping S3 save.")
+        return
+    if tournaments.length == 0:
+        logging.error("No tournaments to save. Skipping S3 save.")
+        return
     try:
         s3.put_object(
             Bucket=S3_BUCKET_NAME,
@@ -171,7 +177,7 @@ async def on_ready():
         check_tournaments.start()  # Start the periodic task
 
 
-@tasks.loop(minutes=15)  # Run every 15 min
+@tasks.loop(minutes=60)  # Run every 60 min
 async def check_tournaments():
     logging.info("Checking for new tournaments...")
     tournaments = fetch_tournaments()
