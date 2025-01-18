@@ -226,6 +226,23 @@ def save_tournaments(tournaments):
         )
     ]
 
+    # Initialize flags for new tournaments
+    for tournament in tournaments:
+        matching_saved = next(
+            (saved for saved in saved_tournaments if 
+             saved["name"] == tournament["name"] and 
+             saved["date"] == tournament["date"] and 
+             saved["location"] == tournament["location"]), 
+            None
+        )
+        if matching_saved:
+            tournament["registration_closing_sent"] = matching_saved.get("registration_closing_sent", False)
+            tournament["registration_filling_sent"] = matching_saved.get("registration_filling_sent", False)
+        else:
+            tournament["registration_closing_sent"] = False
+            tournament["registration_filling_sent"] = False
+
+
     # Check for registration changes
     registration_opened = []
     closing_soon = []
@@ -233,7 +250,7 @@ def save_tournaments(tournaments):
 
     for current in tournaments:
         # Check for new registration openings
-        if current["name"] == "FROZEN Branch Pro-Am sponsored by UnderPar and Dynamic Discs" or current["name"] == "Whitaker Woods Upshot 2 presented by B.S. Upshot":
+        if current["name"] == "FROZEN Branch Pro-Am sponsored by UnderPar and Dynamic Discs":
             # reset registration_closing_sent
             current["registration_closing_sent"] = False
 
@@ -245,23 +262,30 @@ def save_tournaments(tournaments):
                 current.get("registration_open", False)):
                 registration_opened.append(current)
 
-        # Fetch detailed registration info for each tournament if the resigration is open and ((filling up is false & there are either 30+ registrants currently) or (the tournament is less than or equal to 2 weeks away & closing soon is false)
-        if current["url"] != "N/A" and current["registration_open"] and ((current["registrants"] >= 30 and not filling_up) or (current["date"] != "N/A" and (datetime.strptime(current["date"], "%m/%d/%Y") - datetime.now()).days <= 14 and not closing_soon)):
+         # Fetch detailed registration info only if certain conditions are met
+        if (current["url"] != "N/A" and current["registration_open"] and
+            ((current["registrants"] >= 30 and not current["registration_filling_sent"]) or
+                (current["date"] != "N/A" and
+                (datetime.strptime(current["date"], "%m/%d/%Y") - datetime.now()).days <= 14 and
+                not current["registration_closing_sent"]))):
             print(f"Fetching details for {current['name']}...")
+            print(current)
             details = fetch_registration_details(current["url"])
             current.update(details)  # Add fetched details to the tournament dictionary
 
             # Check for "closing soon"
             if details["closing_date"]:
                 days_left = (details["closing_date"] - datetime.now()).days
-                if days_left < 7:
+                if days_left < 7 and current["registration_closing_sent"] == False:
                     closing_soon.append(current)
+                    current["registration_closing_sent"] = True
 
             # Check for "filling up"
             if details["capacity"] > 0:  # Avoid division by zero
                 fill_percentage = (details["registrants"] / details["capacity"]) * 100
-                if fill_percentage >= 75:
+                if fill_percentage >= 75 and current["registration_filling_sent"] == False:
                     filling_up.append(current)
+                    current["registration_filling_sent"] = True
 
     # Save the updated tournaments list back to S3
     save_tournaments_to_s3(tournaments)
@@ -359,5 +383,6 @@ async def check_tournaments():
             color=discord.Color.red()
         )
         await channel.send(embed=embed)
+
 # Run the bot
 client.run(TOKEN)
