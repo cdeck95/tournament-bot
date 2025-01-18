@@ -38,3 +38,4 @@ six==1.17.0
 soupsieve==2.6
 urllib3==2.2.3
 yarl==1.18.3
+pytz

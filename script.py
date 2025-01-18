@@ -10,6 +10,7 @@ import boto3
 from botocore.exceptions import ClientError
 import logging
 import sys
+from pytz import timezone
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +40,43 @@ client = discord.Client(intents=intents)
 
 TOURNAMENTS_FILE = "tournaments.json"
 TOURNAMENT_PAGE_URL = "https://www.discgolfscene.com/tournaments/options;distance=60;zip=08043;country=USA"
+
+def fetch_registration_details(url):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Extract registration closing date
+    cutoff_div = soup.select_one("div.cutoff span")
+    closing_date = None
+    closing_text = "N/A"
+    if cutoff_div:
+        closing_text = cutoff_div.text.strip()
+        try:
+            # Extract date from text like "Online registration closes January 23, 2025 at 6:00pm EST"
+            closing_date = datetime.strptime(closing_text.split("closes ")[1].split(" at")[0], "%B %d, %Y")
+            # remove "online registration closes" from closing_text
+            closing_text = closing_text.split("Online registration closes ")[1]
+        except (IndexError, ValueError):
+            closing_date = None  # Handle invalid or missing date format
+
+    # Extract registrants and capacity
+    registered_span = soup.find("a", string=lambda x: x and "Registered Players" in x)  # Check for None
+    registrants = 0
+    capacity = 0
+    if registered_span:
+        try:
+            # Extract numbers from "80 / 216" in the span text
+            registered_text = registered_span.find("span").text.strip()  # Look for nested <span>
+            registrants, capacity = map(int, registered_text.split(" / "))
+        except (AttributeError, ValueError, IndexError):
+            registrants, capacity = 0, 0  # Default if parsing fails
+
+    return {
+        "closing_text": closing_text,
+        "closing_date": closing_date,
+        "registrants": registrants,
+        "capacity": capacity
+    }
 
 def fetch_tournaments():
     response = requests.get(TOURNAMENT_PAGE_URL)
@@ -124,21 +162,55 @@ def load_tournaments_from_s3():
 
 def save_tournaments_to_s3(tournaments):
     if not tournaments:
-        logging.error("No tournaments to save. Skipping S3 save.")
+        logging.error("No tournaments to save. Skipping S3 upload.")
         return
-    if tournaments.length == 0:
-        logging.error("No tournaments to save. Skipping S3 save.")
-        return
+
     try:
+        # Custom serialization for datetime objects
+        def serialize(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()  # Convert datetime to ISO 8601 string
+            raise TypeError(f"Type {type(obj)} not serializable")
+
         s3.put_object(
             Bucket=S3_BUCKET_NAME,
             Key=S3_FILE_KEY,
-            Body=json.dumps(tournaments, indent=4),
+            Body=json.dumps(tournaments, indent=4, default=serialize),  # Use custom serializer
             ContentType="application/json"
         )
     except ClientError as e:
         logging.error(f'Error saving tournaments to S3: {e}')
         raise e
+
+# def save_tournaments(tournaments):
+#     saved_tournaments = load_tournaments_from_s3()
+#     logging.info(f"Loaded {len(saved_tournaments)} saved tournaments")
+
+#     # Identify new tournaments (unique by name, date, and location)
+#     new_tournaments = [
+#         t for t in tournaments if not any(
+#             t["name"] == saved["name"] and
+#             t["date"] == saved["date"] and
+#             t["location"] == saved["location"]
+#             for saved in saved_tournaments
+#         )
+#     ]
+
+#     # Check for registration changes
+#     registration_opened = []
+#     for current in tournaments:
+#         for saved in saved_tournaments:
+#             if (current["name"] == saved["name"] and
+#                 current["date"] == saved["date"] and
+#                 current["location"] == saved["location"] and
+#                 not saved.get("registration_open", False) and
+#                 current.get("registration_open", False)):
+#                 registration_opened.append(current)
+
+#     # Save the updated tournaments list back to S3
+#     save_tournaments_to_s3(tournaments)
+
+#     return new_tournaments, registration_opened
 
 def save_tournaments(tournaments):
     saved_tournaments = load_tournaments_from_s3()
@@ -156,8 +228,20 @@ def save_tournaments(tournaments):
 
     # Check for registration changes
     registration_opened = []
+    closing_soon = []
+    filling_up = []
+
     for current in tournaments:
+        # Check for new registration openings
+        if current["name"] == "FROZEN Branch Pro-Am sponsored by UnderPar and Dynamic Discs" or current["name"] == "Somo Sno Bowl" or current["name"] == "Whitaker Woods Upshot 2 presented by B.S. Upshot":
+            # reset registration_closing_sent
+            current["registration_closing_sent"] = False
+
         for saved in saved_tournaments:
+            if saved["name"] == "FROZEN Branch Pro-Am sponsored by UnderPar and Dynamic Discs" or saved["name"] == "Somo Sno Bowl" or saved["name"] == "Whitaker Woods Upshot 2 presented by B.S. Upshot":
+                # reset registration_closing_sent
+                print(saved)
+                saved["registration_closing_sent"] = False
             if (current["name"] == saved["name"] and
                 current["date"] == saved["date"] and
                 current["location"] == saved["location"] and
@@ -165,10 +249,28 @@ def save_tournaments(tournaments):
                 current.get("registration_open", False)):
                 registration_opened.append(current)
 
+        # Fetch detailed registration info for each tournament if the resigration is open and ((filling up is false & there are either 30+ registrants currently) or (the tournament is less than or equal to 2 weeks away & closing soon is false)
+        if current["url"] != "N/A" and current["registration_open"] and ((current["registrants"] >= 30 and not filling_up) or (current["date"] != "N/A" and (datetime.strptime(current["date"], "%m/%d/%Y") - datetime.now()).days <= 14 and not closing_soon)):
+            print(f"Fetching details for {current['name']}...")
+            details = fetch_registration_details(current["url"])
+            current.update(details)  # Add fetched details to the tournament dictionary
+
+            # Check for "closing soon"
+            if details["closing_date"]:
+                days_left = (details["closing_date"] - datetime.now()).days
+                if days_left < 7:
+                    closing_soon.append(current)
+
+            # Check for "filling up"
+            if details["capacity"] > 0:  # Avoid division by zero
+                fill_percentage = (details["registrants"] / details["capacity"]) * 100
+                if fill_percentage >= 75:
+                    filling_up.append(current)
+
     # Save the updated tournaments list back to S3
     save_tournaments_to_s3(tournaments)
 
-    return new_tournaments, registration_opened
+    return new_tournaments, registration_opened, closing_soon, filling_up
 
 @client.event
 async def on_ready():
@@ -181,12 +283,16 @@ async def on_ready():
 async def check_tournaments():
     logging.info("Checking for new tournaments...")
     tournaments = fetch_tournaments()
-    new_tournaments, registration_opened = save_tournaments(tournaments)
+    new_tournaments, registration_opened, closing_soon, filling_up = save_tournaments(tournaments)
 
     if not new_tournaments:
         logging.info("No new tournaments found.")
     if not registration_opened:
         logging.info("No tournaments with newly opened registration found.")
+    if not closing_soon:
+        logging.info("No tournaments closing soon found.")
+    if not filling_up:
+        logging.info("No tournaments filling up found.")
 
     channel = client.get_channel(CHANNEL_ID)
 
@@ -233,5 +339,29 @@ async def check_tournaments():
 
         await channel.send(embed=embed)
 
+    # Send messages for closing soon
+    for tournament in closing_soon:
+        registration_closing_message = tournament['closing_text']
+        embed = discord.Embed(
+            title="⏳ Registration Closing Soon ⏳",
+            description=f"[{tournament['name']}]({tournament['url']})\n\n"
+                        f"**Location:** {tournament['location']}\n"
+                        f"**Tournament Date:** {tournament['date']}\n"
+                        f"**Registration Closes:** {registration_closing_message}",
+            color=discord.Color.orange()
+        )
+        await channel.send(embed=embed)
+
+    # Send messages for filling up
+    for tournament in filling_up:
+        embed = discord.Embed(
+            title="🚨 Registration Filling Up 🚨",
+            description=f"[{tournament['name']}]({tournament['url']})\n\n"
+                        f"**Location:** {tournament['location']}\n"
+                        f"**Date:** {tournament['date']}\n"
+                        f"**Registrants:** {tournament['registrants']} / {tournament['capacity']}",
+            color=discord.Color.red()
+        )
+        await channel.send(embed=embed)
 # Run the bot
 client.run(TOKEN)
