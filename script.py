@@ -23,6 +23,8 @@ import random
 import asyncio
 import concurrent.futures
 from detail_worker import DetailWorker
+import platform
+import subprocess
 
 # Add these rate limiting constants
 REQUEST_COOLDOWN_MIN = 1  # Reduced minimum delay to avoid heartbeat timeouts
@@ -68,8 +70,43 @@ def setup_webdriver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
+    
+    # Environment detection for browser binary
+    is_render = "RENDER" in os.environ
+    is_linux = platform.system() == "Linux"
+    
+    # For Linux environments like Render, we need to find or install Chrome
+    if is_linux:
+        # Try to find Chrome or Chromium
+        chrome_paths = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/snap/bin/chromium",
+        ]
+        
+        chrome_found = False
+        for chrome_path in chrome_paths:
+            if os.path.exists(chrome_path):
+                chrome_options.binary_location = chrome_path
+                logging.info(f"Using Chrome/Chromium at: {chrome_path}")
+                chrome_found = True
+                break
+                
+        if not chrome_found and is_render:
+            logging.info("Chrome not found, attempting to install Chromium on Render...")
+            try:
+                # Install Chromium on Render
+                subprocess.run(["apt-get", "update"], check=True)
+                subprocess.run(["apt-get", "install", "-y", "chromium-browser"], check=True)
+                chrome_options.binary_location = "/usr/bin/chromium-browser"
+                logging.info("Chromium installed successfully")
+            except Exception as e:
+                logging.error(f"Failed to install Chromium: {e}")
+                return None
     
     try:
         driver = webdriver.Chrome(
@@ -79,6 +116,7 @@ def setup_webdriver():
         return driver
     except Exception as e:
         logging.error(f"Failed to create webdriver: {e}")
+        logging.info("Falling back to direct HTML scraping method...")
         return None
 
 def load_tournaments_from_s3():
@@ -101,7 +139,99 @@ thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)  # Increased 
 async def fetch_tournaments_async():
     """Async wrapper for fetch_tournaments to avoid blocking Discord heartbeat"""
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(thread_pool, fetch_tournaments)
+    try:
+        # First try using Selenium
+        tournaments = await loop.run_in_executor(thread_pool, fetch_tournaments)
+        if tournaments:
+            return tournaments
+            
+        # If Selenium failed or returned no tournaments, try fallback method
+        logging.info("Switching to fallback HTML scraping method")
+        return await loop.run_in_executor(thread_pool, fetch_tournaments_fallback)
+    except Exception as e:
+        logging.error(f"Error fetching tournaments: {e}")
+        return []
+
+def fetch_tournaments_fallback():
+    """
+    Fallback method to fetch tournaments using direct HTTP requests instead of Selenium.
+    This is used when the webdriver setup fails.
+    """
+    logging.info("Using fallback tournament fetch method")
+    tournaments = []
+    
+    try:
+        # First make a request to the search page to get any necessary cookies
+        session = requests.Session()
+        
+        # Add headers to mimic a browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'max-age=0',
+        }
+        
+        # First get the search page
+        logging.info("Accessing tournament search page")
+        search_page = session.get(TOURNAMENT_SEARCH_URL, headers=headers)
+        
+        # Now access the filter page
+        logging.info("Accessing filter page")
+        filter_url = "https://www.discgolfscene.com/tournaments/search-filter"
+        filter_page = session.get(filter_url, headers=headers)
+        
+        # Now submit the search form with our parameters
+        logging.info("Submitting search form")
+        form_data = {
+            'filter_tournaments_country': 'USA',
+            'filter_usa_state': '',  # Any state
+            'filter_location_name': ZIP_CODE,
+            'filter_location_zip': ZIP_CODE,
+            'filter_location_latitude': '39.846520',  # Echelon, NJ coordinates
+            'filter_location_longitude': '-74.960981',
+            'filter_location_distance': SEARCH_DISTANCE,
+            'date_range': '0',  # All upcoming
+            'tournament_formats[]': '',  # Any format
+            'types[]': '',  # Any event type
+        }
+        
+        response = session.post(filter_url, data=form_data, headers=headers)
+        
+        if response.status_code == 200:
+            logging.info("Search form submitted successfully")
+            # Parse the initial page of results
+            initial_tournaments = parse_tournament_page(response.text)
+            tournaments.extend(initial_tournaments)
+            
+            # Now try to load more results
+            for page in range(1, MAX_PAGINATION_PAGES + 1):
+                logging.info(f"Fetching additional page {page} of tournaments")
+                more_url = f"https://www.discgolfscene.com/tournaments/search-results?limit=50,{50*page}"
+                
+                # Add a small delay to avoid overwhelming the server
+                time.sleep(random.uniform(1.5, 3.0))
+                
+                more_response = session.get(more_url, headers=headers)
+                if more_response.status_code == 200:
+                    more_tournaments = parse_tournament_page(more_response.text, len(tournaments))
+                    if not more_tournaments:
+                        break
+                    tournaments.extend(more_tournaments)
+                else:
+                    logging.warning(f"Failed to load more tournaments: {more_response.status_code}")
+                    break
+        else:
+            logging.error(f"Search form submission failed: {response.status_code}")
+            
+        logging.info(f"Found {len(tournaments)} tournaments with fallback method")
+        return tournaments
+    
+    except Exception as e:
+        logging.error(f"Error in fallback tournament fetch: {e}")
+        return []
 
 def fetch_tournaments():
     """Fetch tournaments from the website using Selenium to interact with search filters"""
