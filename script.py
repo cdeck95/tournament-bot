@@ -42,41 +42,55 @@ TOURNAMENTS_FILE = "tournaments.json"
 TOURNAMENT_PAGE_URL = "https://www.discgolfscene.com/tournaments/options;distance=60;zip=08043;country=USA"
 
 def fetch_registration_details(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
+    try:
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-    # Extract registration closing date
-    cutoff_div = soup.select_one("div.cutoff span")
-    closing_date = None
-    closing_text = "N/A"
-    if cutoff_div:
-        closing_text = cutoff_div.text.strip()
-        try:
-            # Extract date from text like "Online registration closes January 23, 2025 at 6:00pm EST"
-            closing_date = datetime.strptime(closing_text.split("closes ")[1].split(" at")[0], "%B %d, %Y")
-            # remove "online registration closes" from closing_text
-            closing_text = closing_text.split("Online registration closes ")[1]
-        except (IndexError, ValueError):
-            closing_date = None  # Handle invalid or missing date format
+        # Extract registration closing date
+        cutoff_div = soup.select_one("div.cutoff span")
+        closing_date = None
+        closing_text = "N/A"
+        if cutoff_div:
+            closing_text = cutoff_div.text.strip()
+            try:
+                # Extract date from text like "Online registration closes January 23, 2025 at 6:00pm EST"
+                if "closes " in closing_text:
+                    date_part = closing_text.split("closes ")[1].split(" at")[0]
+                    closing_date = datetime.strptime(date_part, "%B %d, %Y")
+                    # remove "online registration closes" from closing_text
+                    closing_text = closing_text.split("Online registration closes ")[1]
+            except (IndexError, ValueError) as e:
+                logging.warning(f"Failed to parse closing date from '{closing_text}': {e}")
+                closing_date = None  # Handle invalid or missing date format
 
-    # Extract registrants and capacity
-    registered_span = soup.find("a", string=lambda x: x and "Registered Players" in x)  # Check for None
-    registrants = 0
-    capacity = 0
-    if registered_span:
-        try:
-            # Extract numbers from "80 / 216" in the span text
-            registered_text = registered_span.find("span").text.strip()  # Look for nested <span>
-            registrants, capacity = map(int, registered_text.split(" / "))
-        except (AttributeError, ValueError, IndexError):
-            registrants, capacity = 0, 0  # Default if parsing fails
+        # Extract registrants and capacity
+        registered_span = soup.find("a", string=lambda x: x and "Registered Players" in x)  # Check for None
+        registrants = 0
+        capacity = 0
+        if registered_span:
+            try:
+                # Extract numbers from "80 / 216" in the span text
+                registered_text = registered_span.find("span").text.strip()  # Look for nested <span>
+                if " / " in registered_text:
+                    registrants, capacity = map(int, registered_text.split(" / "))
+            except (AttributeError, ValueError, IndexError) as e:
+                logging.warning(f"Failed to parse registrants/capacity: {e}")
+                registrants, capacity = 0, 0  # Default if parsing fails
 
-    return {
-        "closing_text": closing_text,
-        "closing_date": closing_date,
-        "registrants": registrants,
-        "capacity": capacity
-    }
+        return {
+            "closing_text": closing_text,
+            "closing_date": closing_date,
+            "registrants": registrants,
+            "capacity": capacity
+        }
+    except Exception as e:
+        logging.error(f"Error fetching tournament details: {e}")
+        return {
+            "closing_text": "N/A",
+            "closing_date": None,
+            "registrants": 0,
+            "capacity": 0
+        }
 
 def fetch_tournaments():
     response = requests.get(TOURNAMENT_PAGE_URL)
@@ -182,36 +196,6 @@ def save_tournaments_to_s3(tournaments):
         logging.error(f'Error saving tournaments to S3: {e}')
         raise e
 
-# def save_tournaments(tournaments):
-#     saved_tournaments = load_tournaments_from_s3()
-#     logging.info(f"Loaded {len(saved_tournaments)} saved tournaments")
-
-#     # Identify new tournaments (unique by name, date, and location)
-#     new_tournaments = [
-#         t for t in tournaments if not any(
-#             t["name"] == saved["name"] and
-#             t["date"] == saved["date"] and
-#             t["location"] == saved["location"]
-#             for saved in saved_tournaments
-#         )
-#     ]
-
-#     # Check for registration changes
-#     registration_opened = []
-#     for current in tournaments:
-#         for saved in saved_tournaments:
-#             if (current["name"] == saved["name"] and
-#                 current["date"] == saved["date"] and
-#                 current["location"] == saved["location"] and
-#                 not saved.get("registration_open", False) and
-#                 current.get("registration_open", False)):
-#                 registration_opened.append(current)
-
-#     # Save the updated tournaments list back to S3
-#     save_tournaments_to_s3(tournaments)
-
-#     return new_tournaments, registration_opened
-
 def save_tournaments(tournaments):
     saved_tournaments = load_tournaments_from_s3()
     logging.info(f"Loaded {len(saved_tournaments)} saved tournaments")
@@ -242,43 +226,55 @@ def save_tournaments(tournaments):
             tournament["registration_closing_sent"] = False
             tournament["registration_filling_sent"] = False
 
-
     # Check for registration changes
     registration_opened = []
     closing_soon = []
     filling_up = []
 
     for current in tournaments:
-        for saved in saved_tournaments:
-            if (current["name"] == saved["name"] and
-                current["date"] == saved["date"] and
-                current["location"] == saved["location"] and
-                not saved.get("registration_open", False) and
-                current.get("registration_open", False)):
-                registration_opened.append(current)
+        # Check for newly opened registration
+        matching_saved = next(
+            (saved for saved in saved_tournaments if 
+             saved["name"] == current["name"] and 
+             saved["date"] == current["date"] and 
+             saved["location"] == current["location"]), 
+            None
+        )
+        
+        if matching_saved and not matching_saved.get("registration_open", False) and current.get("registration_open", True):
+            registration_opened.append(current)
 
-         # Fetch detailed registration info only if certain conditions are met
-        if (current["url"] != "N/A" and current["registration_open"] and
-            ((current["registrants"] >= 30 and not current["registration_filling_sent"]) or
-                (current["date"] != "N/A" and
-                (datetime.strptime(current["date"], "%m/%d/%Y") - datetime.now()).days <= 14 and
-                not current["registration_closing_sent"]))):
-            print(f"Fetching details for {current['name']}...")
-            print(current)
+        # Only fetch details if we need them and registration is open
+        should_check_closing = False
+        should_check_filling = False
+        
+        try:
+            if current["date"] != "N/A":
+                date_obj = datetime.strptime(current["date"], "%m/%d/%Y")
+                days_until_tournament = (date_obj - datetime.now()).days
+                should_check_closing = days_until_tournament <= 14 and not current.get("registration_closing_sent", False)
+        except (ValueError, TypeError) as e:
+            logging.warning(f"Date parsing error for {current['name']}: {e}")
+        
+        should_check_filling = current["registrants"] >= 30 and not current.get("registration_filling_sent", False)
+
+        # Fetch detailed registration info only if necessary
+        if current["url"] != "N/A" and current.get("registration_open", False) and (should_check_closing or should_check_filling):
+            logging.info(f"Fetching details for {current['name']}...")
             details = fetch_registration_details(current["url"])
             current.update(details)  # Add fetched details to the tournament dictionary
 
             # Check for "closing soon"
-            if details["closing_date"]:
+            if details["closing_date"] and should_check_closing:
                 days_left = (details["closing_date"] - datetime.now()).days
-                if days_left < 7 and current["registration_closing_sent"] == False:
+                if days_left < 7:
                     closing_soon.append(current)
                     current["registration_closing_sent"] = True
 
             # Check for "filling up"
-            if details["capacity"] > 0:  # Avoid division by zero
+            if details["capacity"] > 0 and should_check_filling:  # Avoid division by zero
                 fill_percentage = (details["registrants"] / details["capacity"]) * 100
-                if fill_percentage >= 75 and current["registration_filling_sent"] == False:
+                if fill_percentage >= 75:
                     filling_up.append(current)
                     current["registration_filling_sent"] = True
 
@@ -290,50 +286,58 @@ def save_tournaments(tournaments):
 @client.event
 async def on_ready():
     logging.info(f'{client.user} has connected to Discord!')
-    if not check_tournaments.is_running():  # Ensure the task is not already running
-        check_tournaments.start()  # Start the periodic task
+    try:
+        if not check_tournaments.is_running():  # Ensure the task is not already running
+            check_tournaments.start()  # Start the periodic task
+    except Exception as e:
+        logging.error(f"Failed to start background task: {e}")
 
 
 @tasks.loop(minutes=60)  # Run every 60 min
 async def check_tournaments():
-    logging.info("Checking for new tournaments...")
-    tournaments = fetch_tournaments()
-    new_tournaments, registration_opened, closing_soon, filling_up = save_tournaments(tournaments)
+    try:
+        logging.info("Checking for new tournaments...")
+        tournaments = fetch_tournaments()
+        new_tournaments, registration_opened, closing_soon, filling_up = save_tournaments(tournaments)
 
-    if not new_tournaments:
-        logging.info("No new tournaments found.")
-    if not registration_opened:
-        logging.info("No tournaments with newly opened registration found.")
-    if not closing_soon:
-        logging.info("No tournaments closing soon found.")
-    if not filling_up:
-        logging.info("No tournaments filling up found.")
+        if not new_tournaments:
+            logging.info("No new tournaments found.")
+        if not registration_opened:
+            logging.info("No tournaments with newly opened registration found.")
+        if not closing_soon:
+            logging.info("No tournaments closing soon found.")
+        if not filling_up:
+            logging.info("No tournaments filling up found.")
 
-    channel = client.get_channel(CHANNEL_ID)
+        channel = client.get_channel(CHANNEL_ID)
+        if not channel:
+            logging.error(f"Could not find Discord channel with ID {CHANNEL_ID}")
+            return
 
-    # Send messages for new tournaments
-    for tournament in new_tournaments:
-        logging.info(f"New tournament: {tournament['name']}")
+        # Send messages for new tournaments
+        for tournament in new_tournaments:
+            logging.info(f"New tournament: {tournament['name']}")
 
-        # Inside the loop where we create the embed
-        embed = discord.Embed(
-            title="🚨 New Local Tournament 🚨",
-            description=f"[{tournament['name']}]({tournament['url']})\n\n"
-                        f"**Location:** {tournament['location']}\n"
-                        f"**Date:** {tournament['date']}\n"
-                        f"**Registrants:** {tournament['registrants']}\n"
-                        f"**Registration Open:** {'Yes' if tournament['registration_open'] else 'No'}",
-            color=discord.Color.blue()
-        )
-        # embed.add_field(name="Location", value=tournament['location'], inline=False)
-        # embed.add_field(name="Date", value=tournament['date'], inline=True)
-        # embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
-        # embed.add_field(name="Registration Open", value="Yes" if tournament['registration_open'] else "No", inline=True)
+            # Inside the loop where we create the embed
+            embed = discord.Embed(
+                title="🚨 New Local Tournament 🚨",
+                description=f"[{tournament['name']}]({tournament['url']})\n\n"
+                           f"**Location:** {tournament['location']}\n"
+                           f"**Date:** {tournament['date']}\n"
+                           f"**Registrants:** {tournament['registrants']}\n"
+                           f"**Registration Open:** {'Yes' if tournament['registration_open'] else 'No'}",
+                color=discord.Color.blue()
+            )
 
-        if tournament['tier']:
-            embed.add_field(name="Tier", value=tournament['tier'], inline=False)
+            if tournament['tier']:
+                embed.add_field(name="Tier", value=tournament['tier'], inline=False)
 
-        await channel.send(embed=embed)
+            await channel.send(embed=embed)
+
+        # Continue with the rest of the notifications
+        # ...existing code...
+    except Exception as e:
+        logging.error(f"Error in check_tournaments task: {e}")
 
     # Send messages for tournaments with newly opened registration
     for tournament in registration_opened:
