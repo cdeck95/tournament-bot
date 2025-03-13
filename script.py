@@ -5,12 +5,29 @@ from dotenv import load_dotenv
 import requests
 from bs4 import BeautifulSoup
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import boto3
 from botocore.exceptions import ClientError
 import logging
 import sys
 from pytz import timezone
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+import random
+import asyncio
+import concurrent.futures
+
+# Add these rate limiting constants
+REQUEST_COOLDOWN_MIN = 1  # Reduced minimum delay to avoid heartbeat timeouts
+REQUEST_COOLDOWN_MAX = 3  # Reduced maximum delay to avoid heartbeat timeouts 
+PAGE_LOAD_WAIT = 3        # Reduced wait time to avoid heartbeat timeouts
+MAX_PAGINATION_PAGES = 2  # Maximum number of "load more" pages to request
 
 # Configure logging
 logging.basicConfig(
@@ -39,116 +56,32 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 TOURNAMENTS_FILE = "tournaments.json"
-TOURNAMENT_PAGE_URL = "https://www.discgolfscene.com/tournaments/options;distance=60;zip=08043;country=USA"
+TOURNAMENT_SEARCH_URL = "https://www.discgolfscene.com/tournaments/search"
+ZIP_CODE = "08043"  # Echelon, NJ
+SEARCH_DISTANCE = "70"  # miles
 
-def fetch_registration_details(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    # Extract registration closing date
-    cutoff_div = soup.select_one("div.cutoff span")
-    closing_date = None
-    closing_text = "N/A"
-    if cutoff_div:
-        closing_text = cutoff_div.text.strip()
-        try:
-            # Extract date from text like "Online registration closes January 23, 2025 at 6:00pm EST"
-            closing_date = datetime.strptime(closing_text.split("closes ")[1].split(" at")[0], "%B %d, %Y")
-            # remove "online registration closes" from closing_text
-            closing_text = closing_text.split("Online registration closes ")[1]
-        except (IndexError, ValueError):
-            closing_date = None  # Handle invalid or missing date format
-
-    # Extract registrants and capacity
-    registered_span = soup.find("a", string=lambda x: x and "Registered Players" in x)  # Check for None
-    registrants = 0
-    capacity = 0
-    if registered_span:
-        try:
-            # Extract numbers from "80 / 216" in the span text
-            registered_text = registered_span.find("span").text.strip()  # Look for nested <span>
-            registrants, capacity = map(int, registered_text.split(" / "))
-        except (AttributeError, ValueError, IndexError):
-            registrants, capacity = 0, 0  # Default if parsing fails
-
-    return {
-        "closing_text": closing_text,
-        "closing_date": closing_date,
-        "registrants": registrants,
-        "capacity": capacity
-    }
-
-def fetch_tournaments():
-    response = requests.get(TOURNAMENT_PAGE_URL)
-    soup = BeautifulSoup(response.text, 'html.parser')
+def setup_webdriver():
+    """Set up and return a headless Chrome webdriver for web scraping"""
+    chrome_options = Options()
+    chrome_options.add_argument("--headless=new")  # Updated headless mode syntax
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36")
     
-    tournaments = []
-    tournament_divs = soup.select(".tournament-U, .tournament-C")
-    logging.info(f"Found {len(tournament_divs)} tournaments")
-    
-    # Current date for year handling
-    now = datetime.now()
-
-    for div in tournament_divs:
-        # Extract URL from the <a> tag
-        link_tag = div.select_one("a")
-        url = f"https://www.discgolfscene.com{link_tag['href']}" if link_tag and link_tag.has_attr('href') else "N/A"
-        
-        # Extract name and registration status
-        title_em = div.select_one("em")
-        name = title_em.text.strip() if title_em else "N/A"
-        registration_open = "trego" in title_em.get("class", []) if title_em else False
-        
-        # Extract registrants and location
-        registrants_span = div.find("span", string=lambda x: x and "Registrants:" in x)
-        registrants = 0  # Default to 0 if registrants span is missing
-        if registrants_span:
-            try:
-                registrants = int(registrants_span.text.split(":")[1].strip())
-            except (ValueError, IndexError):
-                registrants = 0  # Default to 0 if parsing fails
-
-        # Find location span (next <span> after registrants or empty span)
-        location_span = registrants_span.find_next("span") if registrants_span else div.find("span", string=lambda x: x and "at" in x)
-        location = location_span.text.strip() if location_span else "N/A"
-        
-        # Parse and format date
-        date_text = div.select_one(".t-date").text.strip() if div.select_one(".t-date") else None
-        try:
-            # First, parse the date without the year
-            parsed_date = datetime.strptime(date_text, "%B %d %A")
-            
-            # Adjust the year dynamically
-            if parsed_date.month < now.month:
-                year = now.year + 1  # Tournament in the next year
-            else:
-                year = now.year
-            
-            # Reconstruct the date with the correct year
-            full_date = parsed_date.replace(year=year)
-            date = full_date.strftime("%m/%d/%Y")  # Format to MM/DD/YYYY
-
-            # Skip past tournaments (just in case)
-            if full_date < now:
-                continue
-        except ValueError:
-            date = "N/A"
-        
-        tier = div.select_one(".info.ts").text.strip() if div.select_one(".info.ts") else None  # None if tier is missing
-
-        tournaments.append({
-            "name": name,
-            "url": url,
-            "registration_open": registration_open,
-            "location": location,
-            "date": date,
-            "registrants": registrants,
-            "tier": tier
-        })
-
-    return tournaments
+    try:
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()), 
+            options=chrome_options
+        )
+        return driver
+    except Exception as e:
+        logging.error(f"Failed to create webdriver: {e}")
+        return None
 
 def load_tournaments_from_s3():
+    """Load tournaments list from S3"""
     try:
         response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=S3_FILE_KEY)
         content = response['Body'].read().decode('utf-8')
@@ -158,12 +91,492 @@ def load_tournaments_from_s3():
             logging.error("No tournaments file found in S3. Initializing empty list.")
             return []  # If file doesn't exist, return an empty list
         else:
-            raise e
+            logging.error(f"Error accessing S3: {e}")
+            return []
+
+# Use an executor for running synchronous code in background without blocking Discord
+thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+async def fetch_tournaments_async():
+    """Async wrapper for fetch_tournaments to avoid blocking Discord heartbeat"""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(thread_pool, fetch_tournaments)
+
+def fetch_tournaments():
+    """Fetch tournaments from the website using Selenium to interact with search filters"""
+    try:
+        driver = setup_webdriver()
+        if not driver:
+            logging.error("Could not initialize webdriver. Aborting tournament fetch.")
+            return []
+        
+        logging.info(f"Loading tournament search page: {TOURNAMENT_SEARCH_URL}")
+        driver.get(TOURNAMENT_SEARCH_URL)
+        
+        # Add humanized waiting period after page load - use shorter delays
+        time.sleep(random.uniform(1, 2))
+        
+        # Wait for the page to load - looking for the search form instead
+        WebDriverWait(driver, PAGE_LOAD_WAIT).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "category-search"))
+        )
+        
+        # Take a screenshot for debugging
+        driver.save_screenshot("search_page.png")
+        logging.info("Page screenshot saved as search_page.png")
+        
+        # Check for and dismiss the classic version banner if present
+        try:
+            banner = WebDriverWait(driver, 3).until(
+                EC.presence_of_element_located((By.ID, "desktop-sunset"))
+            )
+            logging.info("Classic version banner found, attempting to dismiss it")
+            
+            # Short delay before interaction (more human-like)
+            time.sleep(random.uniform(1, 2))
+            
+            # Try to find and click the "Ok" button
+            ok_button = banner.find_element(By.CSS_SELECTOR, "a.btn.btn-primary")
+            driver.execute_script("arguments[0].click();", ok_button)
+            logging.info("Clicked 'Ok' button on classic version banner")
+            
+            # Wait a moment for the banner to be removed
+            time.sleep(random.uniform(1, 2))
+        except Exception as e:
+            # Banner not found or couldn't be dismissed
+            logging.info(f"Classic version banner not found or couldn't be dismissed: {e}")
+        
+        # Click on the filter link to open the filter page
+        try:
+            # Take a screenshot to check that banner is gone
+            driver.save_screenshot("after_banner_dismissed.png")
+            
+            # Add reasonable delay before clicking filter link
+            time.sleep(random.uniform(REQUEST_COOLDOWN_MIN, REQUEST_COOLDOWN_MAX))
+            
+            # Try to find and click the filter link with multiple methods
+            try:
+                filter_link = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CLASS_NAME, "search-filter-anchor"))
+                )
+                # Try JavaScript click first (more reliable with overlays)
+                driver.execute_script("arguments[0].click();", filter_link)
+                logging.info("Clicked on filter link using JavaScript")
+                
+                # Wait longer for the page to load (simulates human browsing)
+                time.sleep(PAGE_LOAD_WAIT)
+                
+            except Exception as e:
+                logging.warning(f"JavaScript click failed: {e}")
+                
+                # Try alternate method with regular click
+                filter_link = driver.find_element(By.CLASS_NAME, "search-filter-anchor")
+                filter_link.click()
+                logging.info("Clicked on filter link using regular click")
+                
+                # Wait longer for the page to load
+                time.sleep(PAGE_LOAD_WAIT)
+                
+        except Exception as e:
+            logging.error(f"Failed to click filter link: {e}")
+            # Try direct navigation instead
+            driver.get("https://www.discgolfscene.com/tournaments/search-filter")
+            logging.info("Navigated directly to filter page")
+            time.sleep(2) # Reduced delay
+        
+        # Wait for the filter form to load
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "search-filter"))
+            )
+            
+            # Take a screenshot of the filter form
+            driver.save_screenshot("filter_form.png")
+            logging.info("Filter form screenshot saved as filter_form.png")
+            
+            # Step 1: First make sure USA is selected in the country dropdown
+            try:
+                # Add a short delay before interacting with the form (more human-like but shorter)
+                time.sleep(random.uniform(0.5, 1))
+                
+                # Select the Country dropdown
+                country_select = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.ID, "filter_tournaments_country"))
+                )
+                
+                # Use JavaScript to set value to USA
+                driver.execute_script("arguments[0].value = 'USA';", country_select)
+                # Trigger change event to show state fields
+                driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", country_select)
+                logging.info("Set country to USA")
+                
+                # Give the page a moment to update the form based on country selection
+                time.sleep(random.uniform(1, 2))
+                
+                # Take a screenshot after country selection
+                driver.save_screenshot("after_country_selection.png")
+                logging.info("Country selection screenshot saved")
+                
+                # Add another pause before state selection
+                time.sleep(random.uniform(1, 1.5))
+                
+                # Make sure "Any" is selected for state (default option)
+                state_select = driver.find_element(By.ID, "filter_usa_state")
+                driver.execute_script("arguments[0].value = '';", state_select)
+                driver.execute_script("arguments[0].dispatchEvent(new Event('change'));", state_select)
+                logging.info("Set state to Any")
+            except Exception as e:
+                logging.error(f"Failed to set country/state: {e}")
+            
+            # Step 2: Now handle the location section which should be visible since USA is selected
+            try:
+                # Add a short delay before location form interactions
+                time.sleep(random.uniform(1, 2))
+                
+                # Check if we need to show the location input first
+                location_display = WebDriverWait(driver, 5).until(
+                    EC.presence_of_element_located((By.ID, "location-display"))
+                )
+                
+                if location_display.is_displayed():
+                    # Click the change location link to show the input field
+                    change_location = location_display.find_element(By.CSS_SELECTOR, "a")
+                    driver.execute_script("arguments[0].click();", change_location)
+                    logging.info("Clicked 'Change location' link")
+                    time.sleep(random.uniform(1, 2))  # Wait for the location field to appear
+                
+                # Now find and set the location name/ZIP code
+                location_name = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.ID, "filter_location_name"))
+                )
+                location_name.clear()
+                
+                # Type the ZIP code more like a human (character by character with slight delays)
+                for digit in ZIP_CODE:
+                    location_name.send_keys(digit)
+                    time.sleep(random.uniform(0.1, 0.3))  # Small delay between keystrokes
+                logging.info(f"Set location/ZIP to {ZIP_CODE}")
+                
+                # Wait for any autocomplete to process (more human-like behavior)
+                time.sleep(random.uniform(1.5, 2.5))
+                
+                # Set the hidden ZIP code field as well
+                driver.execute_script(f"document.getElementById('filter_location_zip').value = '{ZIP_CODE}';")
+                
+                # Set the latitude and longitude fields (these are required for the search to work correctly)
+                driver.execute_script("document.getElementById('filter_location_latitude').value = '39.846520';")
+                driver.execute_script("document.getElementById('filter_location_longitude').value = '-74.960981';")
+                logging.info("Set location coordinates for Echelon, NJ")
+                
+                # Add a short pause before setting distance
+                time.sleep(random.uniform(1, 2))
+                
+                # Step 3: Set the distance
+                distance_input = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.ID, "filter_location_distance"))
+                )
+                distance_input.clear()
+                
+                # Type the distance more like a human (character by character with slight delays)
+                for digit in SEARCH_DISTANCE:
+                    distance_input.send_keys(digit)
+                    time.sleep(random.uniform(0.1, 0.3))  # Small delay between keystrokes
+                logging.info(f"Set distance to {SEARCH_DISTANCE} miles")
+                
+                # Take a screenshot of the completed form
+                driver.save_screenshot("completed_form.png")
+                logging.info("Screenshot of completed form saved")
+            except Exception as e:
+                logging.error(f"Failed to set location/distance: {e}")
+            
+            # Make sure the "All upcoming" date range is selected
+            try:
+                # Add a short delay
+                time.sleep(random.uniform(1, 1.5))
+                
+                date_range_all = driver.find_element(By.ID, "date-range-0")
+                if not date_range_all.is_selected():
+                    driver.execute_script("arguments[0].click();", date_range_all)
+                    logging.info("Selected 'All upcoming' date range")
+            except Exception as e:
+                logging.warning(f"Could not set date range: {e}")
+            
+            # Add another short delay before submitting (human-like pause before form submission)
+            time.sleep(random.uniform(0.5, 1))
+            
+            # Take a screenshot before submitting the form
+            driver.save_screenshot("before_submit.png")
+            logging.info("Form filled. Screenshot saved as before_submit.png")
+            
+            # Submit the form by clicking the search button
+            try:
+                submit_btn = WebDriverWait(driver, 5).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, ".search-filter .submit-buttons input[type='submit']"))
+                )
+                driver.execute_script("arguments[0].click();", submit_btn)
+                logging.info("Clicked submit button using JavaScript")
+            except Exception as e:
+                logging.error(f"Failed to click submit button: {e}")
+                try:
+                    # Try submitting the form directly
+                    form = driver.find_element(By.CSS_SELECTOR, "form.search-filter")
+                    driver.execute_script("arguments[0].submit();", form)
+                    logging.info("Submitted form using JavaScript")
+                except Exception as js_e:
+                    logging.error(f"Failed to submit form: {js_e}")
+            
+            # Wait longer for the results page to load - websites often delay search results intentionally
+            # to prevent scraping
+            time.sleep(PAGE_LOAD_WAIT * 1.5)
+            try:
+                WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.ID, "tournaments-list"))
+                )
+                logging.info("Results page loaded successfully")
+            except Exception as e:
+                logging.error(f"Timed out waiting for results page: {e}")
+                # Continue anyway as the page might still have loaded partially
+            
+        except Exception as e:
+            logging.error(f"Error interacting with filter form: {e}")
+            # Continue anyway to see if we can parse tournaments from current page
+        
+        # Take a screenshot of results
+        driver.save_screenshot("results_page.png")
+        logging.info("Results page screenshot saved as results_page.png")
+        
+        # Parse the results
+        tournaments = []
+        
+        # Get the initial page of results
+        page_html = driver.page_source
+        initial_tournaments = parse_tournament_page(page_html)
+        logging.info(f"Initially found {len(initial_tournaments)} tournaments")
+        tournaments.extend(initial_tournaments)
+        
+        # Check if there are more pages to load
+        try:
+            # Look for "Load more tournaments..." link at the bottom
+            load_more_container = driver.find_element(By.ID, "load-tournaments-50-50")
+            if load_more_container:
+                load_more_link = load_more_container.find_element(By.CSS_SELECTOR, "a.load-more")
+                
+                # Limit the number of pages we load to avoid rate limiting
+                page_count = 1
+                
+                while (load_more_link and load_more_link.is_displayed() and 
+                       page_count < MAX_PAGINATION_PAGES):
+                    logging.info(f"Found 'load more' link, clicking (page {page_count+1} of max {MAX_PAGINATION_PAGES})...")
+                    
+                    # Add a shorter delay between pagination requests to avoid heartbeat timeouts
+                    wait_time = random.uniform(1, 2)
+                    logging.info(f"Waiting {wait_time:.2f} seconds before loading more tournaments...")
+                    time.sleep(wait_time)
+                    
+                    # Use JavaScript click for better reliability
+                    driver.execute_script("arguments[0].click();", load_more_link)
+                    
+                    # Wait longer for new content to load
+                    time.sleep(PAGE_LOAD_WAIT)
+                    
+                    # Parse the newly loaded tournaments
+                    new_html = driver.page_source
+                    new_tournaments = parse_tournament_page(new_html, len(tournaments))
+                    
+                    if not new_tournaments:
+                        logging.info("No new tournaments found, stopping pagination")
+                        break
+                    
+                    logging.info(f"Found {len(new_tournaments)} additional tournaments")
+                    tournaments.extend(new_tournaments)
+                    page_count += 1
+                    
+                    # Re-find the load-more link (it might have been replaced)
+                    try:
+                        # The container might be gone after clicking
+                        load_more_container = driver.find_element(By.CSS_SELECTOR, "[id^='load-tournaments-']")
+                        if load_more_container:
+                            load_more_link = load_more_container.find_element(By.CSS_SELECTOR, "a.load-more")
+                        else:
+                            break
+                    except:
+                        logging.info("No more 'load more' links found")
+                        break
+                
+                if page_count >= MAX_PAGINATION_PAGES:
+                    logging.info(f"Reached maximum page limit ({MAX_PAGINATION_PAGES}). Stopping pagination to avoid rate limiting.")
+        except Exception as e:
+            logging.info(f"No 'load more' link or error occurred: {e}")
+        
+        logging.info(f"Found {len(tournaments)} tournaments total")
+        driver.quit()
+        return tournaments
+        
+    except Exception as e:
+        logging.error(f"Error fetching tournaments: {e}")
+        if 'driver' in locals() and driver:
+            try:
+                driver.save_screenshot("error_state.png")
+                logging.info("Error state screenshot saved as error_state.png")
+                driver.quit()
+            except:
+                pass
+        return []
+
+def parse_tournament_page(html_content, existing_count=0):
+    """Parse the tournament listings from the HTML content"""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    tournaments = []
+    tournament_divs = soup.select(".tournament-list.list-record")
+    
+    # Skip already processed tournaments if we're loading more
+    tournament_divs = tournament_divs[existing_count:] if existing_count > 0 else tournament_divs
+    
+    # Current date for year handling
+    now = datetime.now()
+    
+    logging.info(f"Parsing {len(tournament_divs)} tournament entries")
+
+    for div in tournament_divs:
+        try:
+            # Extract URL from the <a> tag
+            link_tag = div.select_one("a")
+            url = link_tag['href'] if link_tag and link_tag.has_attr('href') else "N/A"
+            
+            # Extract name
+            name_span = div.select_one("span.name")
+            name = name_span.text.strip() if name_span else "N/A"
+            
+            # Extract info spans for date, tier, etc.
+            info_spans = div.select("span.info")
+            
+            # Extract tier and date from the first info span
+            date_text = ""
+            tier = None
+            
+            if info_spans and len(info_spans) > 0:
+                info_text = info_spans[0].text.strip()
+                
+                # Check if it contains a tier
+                if "PDGA" in info_text:
+                    tier_parts = info_text.split("·")
+                    tier = tier_parts[0].strip()
+                    if len(tier_parts) > 1:
+                        date_text = tier_parts[1].strip()
+                elif "Disc Golf Pro Tour" in info_text:
+                    tier = "Disc Golf Pro Tour"
+                    date_parts = info_text.split("·") if "·" in info_text else info_text.split(tier)
+                    if len(date_parts) > 1:
+                        date_text = date_parts[1].strip()
+                    else:
+                        date_text = info_text.replace(tier, "").strip()
+                else:
+                    date_text = info_text.strip()
+            
+            # Parse date_text to get a standard format
+            date = "N/A"
+            try:
+                # Handle different date formats
+                if "-" in date_text:  # Format like "Sat-Sun, Mar 22-23, 2025"
+                    date_parts = date_text.split(",")
+                    if len(date_parts) >= 2:
+                        month_day_year = date_parts[-1].strip()
+                        if "20" in month_day_year:  # Contains year
+                            # Try different formats
+                            try:
+                                date_obj = datetime.strptime(month_day_year, "%b %d, %Y")
+                                date = date_obj.strftime("%m/%d/%Y")
+                            except ValueError:
+                                # Try another format (handle cases like "Mar 22-23, 2025")
+                                # Extract just the month and year
+                                month = month_day_year.split(" ")[0]
+                                year = month_day_year.split(" ")[-1]
+                                # Use the first day of the month as an approximation
+                                try:
+                                    date_obj = datetime.strptime(f"{month} 1, {year}", "%b %d, %Y")
+                                    date = date_obj.strftime("%m/%d/%Y")
+                                except ValueError:
+                                    date = "N/A"
+                elif "," in date_text:  # Format like "Sat, Mar 15, 2025"
+                    date_parts = date_text.split(",")
+                    if len(date_parts) >= 2:
+                        month_day_year = ",".join(date_parts[1:]).strip()
+                        try:
+                            date_obj = datetime.strptime(month_day_year, " %b %d, %Y")
+                            date = date_obj.strftime("%m/%d/%Y")
+                        except ValueError:
+                            # Try alternative format
+                            try:
+                                date_obj = datetime.strptime(month_day_year, " %B %d, %Y")
+                                date = date_obj.strftime("%m/%d/%Y")
+                            except ValueError:
+                                date = "N/A"
+            except Exception as e:
+                logging.warning(f"Failed to parse date from '{date_text}': {e}")
+                date = "N/A"
+            
+            # Extract location and registrants from the second info span
+            location = "N/A"
+            registrants = 0
+            capacity = 0
+            
+            if info_spans and len(info_spans) > 1:
+                location_info = info_spans[1]
+                location_span = location_info.select_one("span")
+                if location_span:
+                    location = location_span.text.strip()
+                
+                # Look for registration numbers which are in format "##" or "## / ##"
+                user_group_icon = location_info.select_one("i.fa-user-group")
+                
+                if user_group_icon:
+                    # Find the <b> tag that follows the user-group icon
+                    reg_numbers_b = user_group_icon.find_next("b")
+                    if reg_numbers_b:
+                        reg_numbers = reg_numbers_b.text.strip()
+                        if "/" in reg_numbers:
+                            reg_parts = reg_numbers.split("/")
+                            try:
+                                registrants = int(reg_parts[0].strip())
+                                capacity = int(reg_parts[1].strip())
+                            except ValueError:
+                                registrants = 0
+                                capacity = 0
+                        else:
+                            try:
+                                registrants = int(reg_numbers.strip())
+                            except ValueError:
+                                registrants = 0
+            
+            # Check if registration is open - tournaments with upcoming registration will have a timestamp
+            registration_open = True  # Default to assume open
+            if info_spans and len(info_spans) > 2:
+                reg_info = info_spans[2].text.strip()
+                if "at" in reg_info and ("EDT" in reg_info or "EST" in reg_info):  # Registration opens in the future
+                    registration_open = False
+            
+            tournaments.append({
+                "name": name,
+                "url": url,
+                "registration_open": registration_open,
+                "location": location,
+                "date": date,
+                "registrants": registrants,
+                "capacity": capacity,
+                "tier": tier
+            })
+        except Exception as e:
+            logging.error(f"Error parsing tournament entry: {e}")
+            continue
+
+    return tournaments
 
 def save_tournaments_to_s3(tournaments):
+    """Save tournaments to S3 bucket"""
     if not tournaments:
         logging.error("No tournaments to save. Skipping S3 upload.")
-        return
+        return False
 
     try:
         # Custom serialization for datetime objects
@@ -178,42 +591,15 @@ def save_tournaments_to_s3(tournaments):
             Body=json.dumps(tournaments, indent=4, default=serialize),  # Use custom serializer
             ContentType="application/json"
         )
+        return True
     except ClientError as e:
         logging.error(f'Error saving tournaments to S3: {e}')
-        raise e
+        return False
 
-# def save_tournaments(tournaments):
-#     saved_tournaments = load_tournaments_from_s3()
-#     logging.info(f"Loaded {len(saved_tournaments)} saved tournaments")
-
-#     # Identify new tournaments (unique by name, date, and location)
-#     new_tournaments = [
-#         t for t in tournaments if not any(
-#             t["name"] == saved["name"] and
-#             t["date"] == saved["date"] and
-#             t["location"] == saved["location"]
-#             for saved in saved_tournaments
-#         )
-#     ]
-
-#     # Check for registration changes
-#     registration_opened = []
-#     for current in tournaments:
-#         for saved in saved_tournaments:
-#             if (current["name"] == saved["name"] and
-#                 current["date"] == saved["date"] and
-#                 current["location"] == saved["location"] and
-#                 not saved.get("registration_open", False) and
-#                 current.get("registration_open", False)):
-#                 registration_opened.append(current)
-
-#     # Save the updated tournaments list back to S3
-#     save_tournaments_to_s3(tournaments)
-
-#     return new_tournaments, registration_opened
-
-def save_tournaments(tournaments):
-    saved_tournaments = load_tournaments_from_s3()
+async def save_tournaments_async(tournaments):
+    """Async wrapper for save_tournaments to avoid blocking Discord"""
+    loop = asyncio.get_running_loop()
+    saved_tournaments = await loop.run_in_executor(thread_pool, load_tournaments_from_s3)
     logging.info(f"Loaded {len(saved_tournaments)} saved tournaments")
 
     # Identify new tournaments (unique by name, date, and location)
@@ -242,142 +628,175 @@ def save_tournaments(tournaments):
             tournament["registration_closing_sent"] = False
             tournament["registration_filling_sent"] = False
 
-
     # Check for registration changes
     registration_opened = []
     closing_soon = []
     filling_up = []
 
-    for current in tournaments:
-        for saved in saved_tournaments:
-            if (current["name"] == saved["name"] and
-                current["date"] == saved["date"] and
-                current["location"] == saved["location"] and
-                not saved.get("registration_open", False) and
-                current.get("registration_open", False)):
-                registration_opened.append(current)
+    # Process tournaments with fewer delay interactions to avoid Discord timeouts
+    for i, current in enumerate(tournaments):
+        # Add minimal delays between processing tournaments
+        if i > 0 and i % 10 == 0:  # Only delay every 10 items
+            await asyncio.sleep(0.5)  # Use asyncio.sleep for non-blocking delay
+            
+        # Check for newly opened registration
+        matching_saved = next(
+            (saved for saved in saved_tournaments if 
+             saved["name"] == current["name"] and 
+             saved["date"] == current["date"] and 
+             saved["location"] == current["location"]), 
+            None
+        )
+        
+        if matching_saved and not matching_saved.get("registration_open", False) and current.get("registration_open", True):
+            registration_opened.append(current)
 
-         # Fetch detailed registration info only if certain conditions are met
-        if (current["url"] != "N/A" and current["registration_open"] and
-            ((current["registrants"] >= 30 and not current["registration_filling_sent"]) or
-                (current["date"] != "N/A" and
-                (datetime.strptime(current["date"], "%m/%d/%Y") - datetime.now()).days <= 14 and
-                not current["registration_closing_sent"]))):
-            print(f"Fetching details for {current['name']}...")
-            print(current)
-            details = fetch_registration_details(current["url"])
-            current.update(details)  # Add fetched details to the tournament dictionary
+        # Only fetch details if we need them and registration is open
+        should_check_closing = False
+        should_check_filling = False
+        
+        try:
+            if current["date"] != "N/A":
+                date_obj = datetime.strptime(current["date"], "%m/%d/%Y")
+                days_until_tournament = (date_obj - datetime.now()).days
+                should_check_closing = days_until_tournament <= 14 and not current.get("registration_closing_sent", False)
+        except (ValueError, TypeError) as e:
+            logging.warning(f"Date parsing error for {current['name']}: {e}")
+        
+        should_check_filling = current["registrants"] >= 30 and not current.get("registration_filling_sent", False)
 
-            # Check for "closing soon"
-            if details["closing_date"]:
-                days_left = (details["closing_date"] - datetime.now()).days
-                if days_left < 7 and current["registration_closing_sent"] == False:
-                    closing_soon.append(current)
-                    current["registration_closing_sent"] = True
-
-            # Check for "filling up"
-            if details["capacity"] > 0:  # Avoid division by zero
-                fill_percentage = (details["registrants"] / details["capacity"]) * 100
-                if fill_percentage >= 75 and current["registration_filling_sent"] == False:
-                    filling_up.append(current)
-                    current["registration_filling_sent"] = True
+        # For now skip getting additional details as it causes heartbeat timeouts
+        # We'll handle this later in a separate background process
 
     # Save the updated tournaments list back to S3
-    save_tournaments_to_s3(tournaments)
+    await loop.run_in_executor(thread_pool, lambda: save_tournaments_to_s3(tournaments))
 
     return new_tournaments, registration_opened, closing_soon, filling_up
 
 @client.event
 async def on_ready():
     logging.info(f'{client.user} has connected to Discord!')
-    if not check_tournaments.is_running():  # Ensure the task is not already running
-        check_tournaments.start()  # Start the periodic task
+    try:
+        if not check_tournaments.is_running():  # Ensure the task is not already running
+            check_tournaments.start()  # Start the periodic task
+    except Exception as e:
+        logging.error(f"Failed to start background task: {e}")
 
+# Use jitter in the task interval to avoid predictable patterns
+# that could trigger rate limiting detection
+def jittered_hours(hours=8):
+    """Return the interval in minutes with +/- 25% random jitter"""
+    base_minutes = hours * 60
+    jitter = base_minutes * 0.25  # 25% jitter
+    return base_minutes + random.uniform(-jitter, jitter)
 
-@tasks.loop(minutes=60)  # Run every 60 min
+@tasks.loop(hours=12)  # Run every 12 hours instead of every hour
 async def check_tournaments():
-    logging.info("Checking for new tournaments...")
-    tournaments = fetch_tournaments()
-    new_tournaments, registration_opened, closing_soon, filling_up = save_tournaments(tournaments)
-
-    if not new_tournaments:
-        logging.info("No new tournaments found.")
-    if not registration_opened:
-        logging.info("No tournaments with newly opened registration found.")
-    if not closing_soon:
-        logging.info("No tournaments closing soon found.")
-    if not filling_up:
-        logging.info("No tournaments filling up found.")
-
-    channel = client.get_channel(CHANNEL_ID)
-
-    # Send messages for new tournaments
-    for tournament in new_tournaments:
-        logging.info(f"New tournament: {tournament['name']}")
-
-        # Inside the loop where we create the embed
-        embed = discord.Embed(
-            title="🚨 New Local Tournament 🚨",
-            description=f"[{tournament['name']}]({tournament['url']})\n\n"
-                        f"**Location:** {tournament['location']}\n"
-                        f"**Date:** {tournament['date']}\n"
-                        f"**Registrants:** {tournament['registrants']}\n"
-                        f"**Registration Open:** {'Yes' if tournament['registration_open'] else 'No'}",
-            color=discord.Color.blue()
-        )
-        # embed.add_field(name="Location", value=tournament['location'], inline=False)
-        # embed.add_field(name="Date", value=tournament['date'], inline=True)
-        # embed.add_field(name="Registrants", value=str(tournament['registrants']), inline=True)
-        # embed.add_field(name="Registration Open", value="Yes" if tournament['registration_open'] else "No", inline=True)
-
-        if tournament['tier']:
-            embed.add_field(name="Tier", value=tournament['tier'], inline=False)
-
-        await channel.send(embed=embed)
-
-    # Send messages for tournaments with newly opened registration
-    for tournament in registration_opened:
-        logging.info(f"Registration opened: {tournament['name']}")
-
-        embed = discord.Embed(
-            title="📖 Registration Open 📖",
-            description=f"[{tournament['name']}]({tournament['url']})\n\n"
-                        f"**Location:** {tournament['location']}\n"
-                        f"**Date:** {tournament['date']}\n"
-                        f"**Registrants:** {tournament['registrants']}\n"
-                        f"**Registration Open:** {'Yes' if tournament['registration_open'] else 'No'}",
-            color=discord.Color.green()
-        )
-        if tournament['tier']:
-            embed.add_field(name="Tier", value=tournament['tier'], inline=False)
+    try:
+        logging.info("Checking for new tournaments...")
         
+        # Use async version of the tournament fetching to avoid blocking heartbeats
+        tournaments = await fetch_tournaments_async()
+        
+        # Handle errors gracefully
+        if not tournaments:
+            logging.warning("No tournaments fetched. Skipping notification cycle.")
+            return
+            
+        # Use async version of save_tournaments to avoid blocking
+        new_tournaments, registration_opened, closing_soon, filling_up = await save_tournaments_async(tournaments)
 
-        await channel.send(embed=embed)
+        logging.info(f"Found {len(new_tournaments)} new tournaments")
+        logging.info(f"Found {len(registration_opened)} tournaments with newly opened registration")
+        logging.info(f"Found {len(closing_soon)} tournaments closing soon")
+        logging.info(f"Found {len(filling_up)} tournaments filling up")
 
-    # Send messages for closing soon
-    for tournament in closing_soon:
-        registration_closing_message = tournament['closing_text']
-        embed = discord.Embed(
-            title="⏳ Registration Closing Soon ⏳",
-            description=f"[{tournament['name']}]({tournament['url']})\n\n"
+        channel = client.get_channel(CHANNEL_ID)
+        if not channel:
+            logging.error(f"Could not find Discord channel with ID {CHANNEL_ID}")
+            return
+
+        # Send messages for new tournaments
+        for tournament in new_tournaments:
+            logging.info(f"New tournament: {tournament['name']}")
+
+            # Inside the loop where we create the embed
+            embed = discord.Embed(
+                title="🚨 New Local Tournament 🚨",
+                description=f"[{tournament['name']}]({tournament['url']})\n\n"
+                           f"**Location:** {tournament['location']}\n"
+                           f"**Date:** {tournament['date']}\n"
+                           f"**Registrants:** {tournament['registrants']}\n"
+                           f"**Registration Open:** {'Yes' if tournament['registration_open'] else 'No'}",
+                color=discord.Color.blue()
+            )
+
+            if tournament['tier']:
+                embed.add_field(name="Tier", value=tournament['tier'], inline=False)
+
+            await channel.send(embed=embed)
+            await asyncio.sleep(0.5)  # Small delay between messages to avoid rate limits
+
+        # Send messages for tournaments with newly opened registration
+        for tournament in registration_opened:
+            logging.info(f"Registration opened: {tournament['name']}")
+
+            embed = discord.Embed(
+                title="📖 Registration Open 📖",
+                description=f"[{tournament['name']}]({tournament['url']})\n\n"
+                        f"**Location:** {tournament['location']}\n"
+                        f"**Date:** {tournament['date']}\n"
+                        f"**Registrants:** {tournament['registrants']}\n"
+                        f"**Registration Open:** {'Yes' if tournament['registration_open'] else 'No'}",
+                color=discord.Color.green()
+            )
+            if tournament['tier']:
+                embed.add_field(name="Tier", value=tournament['tier'], inline=False)
+            
+            await channel.send(embed=embed)
+            await asyncio.sleep(0.5)  # Small delay between messages
+
+        # Send messages for closing soon
+        for tournament in closing_soon:
+            registration_closing_message = tournament.get('closing_text', 'N/A')
+            embed = discord.Embed(
+                title="⏳ Registration Closing Soon ⏳",
+                description=f"[{tournament['name']}]({tournament['url']})\n\n"
                         f"**Location:** {tournament['location']}\n"
                         f"**Tournament Date:** {tournament['date']}\n"
                         f"**Registration Closes:** {registration_closing_message}",
-            color=discord.Color.orange()
-        )
-        await channel.send(embed=embed)
+                color=discord.Color.orange()
+            )
+            await channel.send(embed=embed)
+            await asyncio.sleep(0.5)  # Small delay between messages
 
-    # Send messages for filling up
-    for tournament in filling_up:
-        embed = discord.Embed(
-            title="🚨 Registration Filling Up 🚨",
-            description=f"[{tournament['name']}]({tournament['url']})\n\n"
+        # Send messages for filling up
+        for tournament in filling_up:
+            embed = discord.Embed(
+                title="🚨 Registration Filling Up 🚨",
+                description=f"[{tournament['name']}]({tournament['url']})\n\n"
                         f"**Location:** {tournament['location']}\n"
                         f"**Date:** {tournament['date']}\n"
                         f"**Registrants:** {tournament['registrants']} / {tournament['capacity']}",
-            color=discord.Color.red()
-        )
-        await channel.send(embed=embed)
+                color=discord.Color.red()
+            )
+            await channel.send(embed=embed)
+            await asyncio.sleep(0.5)  # Small delay between messages
+        
+        # Add jitter to next run time to avoid predictable patterns
+        # that might trigger rate limiting detection
+        next_run = jittered_hours(12)  # 12 hours +/- 25% jitter
+        check_tournaments.change_interval(minutes=int(next_run))
+        logging.info(f"Next check scheduled in {next_run/60:.1f} hours")
+        
+    except Exception as e:
+        logging.error(f"Error in check_tournaments task: {e}", exc_info=True)
+        
+        # If we encounter an error that might be due to rate limiting,
+        # back off by increasing the next interval
+        next_run = jittered_hours(24)  # 24 hours with jitter
+        check_tournaments.change_interval(minutes=int(next_run))
+        logging.info(f"Error occurred. Backing off - next check in {next_run/60:.1f} hours")
 
 # Run the bot
 client.run(TOKEN)
