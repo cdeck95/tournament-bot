@@ -22,6 +22,7 @@ import time
 import random
 import asyncio
 import concurrent.futures
+from detail_worker import DetailWorker
 
 # Add these rate limiting constants
 REQUEST_COOLDOWN_MIN = 1  # Reduced minimum delay to avoid heartbeat timeouts
@@ -95,7 +96,7 @@ def load_tournaments_from_s3():
             return []
 
 # Use an executor for running synchronous code in background without blocking Discord
-thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=2)  # Increased to 2 workers
 
 async def fetch_tournaments_async():
     """Async wrapper for fetch_tournaments to avoid blocking Discord heartbeat"""
@@ -633,13 +634,8 @@ async def save_tournaments_async(tournaments):
     closing_soon = []
     filling_up = []
 
-    # Process tournaments with fewer delay interactions to avoid Discord timeouts
-    for i, current in enumerate(tournaments):
-        # Add minimal delays between processing tournaments
-        if i > 0 and i % 10 == 0:  # Only delay every 10 items
-            await asyncio.sleep(0.5)  # Use asyncio.sleep for non-blocking delay
-            
-        # Check for newly opened registration
+    # Find tournaments where registration has newly opened
+    for current in tournaments:
         matching_saved = next(
             (saved for saved in saved_tournaments if 
              saved["name"] == current["name"] and 
@@ -651,22 +647,10 @@ async def save_tournaments_async(tournaments):
         if matching_saved and not matching_saved.get("registration_open", False) and current.get("registration_open", True):
             registration_opened.append(current)
 
-        # Only fetch details if we need them and registration is open
-        should_check_closing = False
-        should_check_filling = False
-        
-        try:
-            if current["date"] != "N/A":
-                date_obj = datetime.strptime(current["date"], "%m/%d/%Y")
-                days_until_tournament = (date_obj - datetime.now()).days
-                should_check_closing = days_until_tournament <= 14 and not current.get("registration_closing_sent", False)
-        except (ValueError, TypeError) as e:
-            logging.warning(f"Date parsing error for {current['name']}: {e}")
-        
-        should_check_filling = current["registrants"] >= 30 and not current.get("registration_filling_sent", False)
-
-        # For now skip getting additional details as it causes heartbeat timeouts
-        # We'll handle this later in a separate background process
+    # Use the DetailWorker to fetch additional tournament details asynchronously
+    # This doesn't block Discord's heartbeat because it uses a separate executor
+    detail_worker = DetailWorker(thread_pool, max_concurrent=2)
+    closing_soon, filling_up = await detail_worker.enrich_tournaments(tournaments)
 
     # Save the updated tournaments list back to S3
     await loop.run_in_executor(thread_pool, lambda: save_tournaments_to_s3(tournaments))

@@ -9,6 +9,11 @@ import random
 from datetime import datetime
 from fetch_registration_details import fetch_registration_details
 
+# Default capacity to use when the actual capacity is unknown
+DEFAULT_CAPACITY = 72
+# Percentage threshold at which to consider a tournament "filling up"
+FILLING_THRESHOLD = 75
+
 class DetailWorker:
     """Worker class to fetch tournament details asynchronously"""
     
@@ -55,14 +60,14 @@ class DetailWorker:
         closing_soon = []
         filling_up = []
         
-        tasks = []
+        # First pre-filter tournaments that need details
+        eligible_tournaments = []
         
-        # Filter tournaments that need additional details
         for tournament in tournaments:
             should_check_closing = False
             should_check_filling = False
             
-            # Check if it needs details fetched
+            # Check if we should check for closing soon
             try:
                 if tournament["date"] != "N/A":
                     date_obj = datetime.strptime(tournament["date"], "%m/%d/%Y")
@@ -71,36 +76,66 @@ class DetailWorker:
             except (ValueError, TypeError) as e:
                 logging.warning(f"Date parsing error for {tournament['name']}: {e}")
             
-            should_check_filling = tournament["registrants"] >= 30 and not tournament.get("registration_filling_sent", False)
+            # Check if there are enough registrants to potentially be "filling up"
+            # Use either the actual capacity or DEFAULT_CAPACITY
+            tournament_capacity = tournament.get("capacity", 0) or DEFAULT_CAPACITY
+            fill_percentage = (tournament["registrants"] / tournament_capacity) * 100 if tournament_capacity > 0 else 0
+            
+            # If it's already at least 50% full, we should check it
+            should_check_filling = fill_percentage >= 50 and not tournament.get("registration_filling_sent", False)
             
             # Only fetch details when needed and registration is open
-            if tournament["url"] != "N/A" and tournament.get("registration_open", False) and (should_check_closing or should_check_filling):
-                tasks.append((tournament, self.get_tournament_details(tournament)))
+            if tournament["url"] != "N/A" and tournament.get("registration_open", True) and (should_check_closing or should_check_filling):
+                eligible_tournaments.append((tournament, should_check_closing, should_check_filling))
         
-        # Process results as they complete
-        for tournament, task in tasks:
-            try:
-                details = await task
-                tournament.update(details)  # Add fetched details to the tournament dictionary
-                
-                # Check for "closing soon"
-                if details["closing_date"] and tournament.get("date") != "N/A":
-                    try:
+        # Process eligible tournaments in batches to avoid overwhelming the server
+        batch_size = 5
+        for i in range(0, len(eligible_tournaments), batch_size):
+            batch = eligible_tournaments[i:i+batch_size]
+            tasks = []
+            
+            # Create tasks for this batch
+            for tournament, check_closing, check_filling in batch:
+                tasks.append((tournament, check_closing, check_filling, self.get_tournament_details(tournament)))
+            
+            # Wait a moment between batches to avoid rate limiting
+            if i > 0:
+                await asyncio.sleep(2.0)
+            
+            # Process results as they complete
+            for tournament, check_closing, check_filling, task in tasks:
+                try:
+                    details = await task
+                    tournament.update(details)  # Add fetched details to the tournament dictionary
+                    
+                    # Check for "closing soon"
+                    if check_closing and details["closing_date"]:
                         days_left = (details["closing_date"] - datetime.now()).days
                         if days_left < 7:
                             closing_soon.append(tournament)
                             tournament["registration_closing_sent"] = True
-                    except Exception as e:
-                        logging.warning(f"Error calculating days left: {e}")
+                    
+                    # Check for "filling up"
+                    if check_filling:
+                        # Use either the fetched capacity or the capacity from the listing, or DEFAULT_CAPACITY
+                        capacity = details.get("capacity", tournament.get("capacity", 0)) or DEFAULT_CAPACITY
+                        
+                        # Use the larger of the registrant counts
+                        registrants = max(details.get("registrants", 0), tournament.get("registrants", 0))
+                        
+                        # Calculate percentage and check if it's filling up
+                        if capacity > 0:  # Avoid division by zero
+                            fill_percentage = (registrants / capacity) * 100
+                            if fill_percentage >= FILLING_THRESHOLD:
+                                # Update the tournament with the latest numbers
+                                tournament["registrants"] = registrants
+                                tournament["capacity"] = capacity
+                                filling_up.append(tournament)
+                                tournament["registration_filling_sent"] = True
+                                logging.info(f"Tournament filling up: {tournament['name']} - {registrants}/{capacity} ({fill_percentage:.1f}%)")
                 
-                # Check for "filling up"
-                if details["capacity"] > 0:  # Avoid division by zero
-                    fill_percentage = (details["registrants"] / details["capacity"]) * 100
-                    if fill_percentage >= 75:
-                        filling_up.append(tournament)
-                        tournament["registration_filling_sent"] = True
-            
-            except Exception as e:
-                logging.error(f"Error fetching details for {tournament['name']}: {e}")
+                except Exception as e:
+                    logging.error(f"Error processing details for {tournament['name']}: {e}")
         
+        logging.info(f"Processed details for {len(eligible_tournaments)} tournaments, found {len(closing_soon)} closing soon and {len(filling_up)} filling up")
         return closing_soon, filling_up

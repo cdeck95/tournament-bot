@@ -31,13 +31,22 @@ def fetch_registration_details(url):
             'Accept-Language': 'en-US,en;q=0.5',
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
-            'Cache-Control': 'max-age=0'
+            'Cache-Control': 'max-age=0',
+            # Add a realistic referer to seem like we're coming from the search page
+            'Referer': 'https://www.discgolfscene.com/tournaments/search',
         }
+        
+        # Add randomized timing - sometimes we check links right away, sometimes we delay
+        # This makes our behavior seem more human-like
+        if random.random() < 0.3:  # 30% chance of a longer delay
+            delay = random.uniform(2, 5)
+            logging.debug(f"Adding extra pre-request delay of {delay:.2f}s for {url}")
+            time.sleep(delay)
         
         response = requests.get(url, headers=headers, timeout=30)
         
-        # Add a small delay after the request
-        time.sleep(random.uniform(1, 2))
+        # Add a small delay after the request - randomized to seem more human
+        time.sleep(random.uniform(0.5, 2))
         
         # Check if we got a successful response
         if response.status_code != 200:
@@ -107,6 +116,12 @@ def fetch_registration_details(url):
                                 registrants = int(reg_text)
                 except (AttributeError, ValueError, IndexError) as e:
                     logging.warning(f"Failed to parse registrants/capacity from registration section: {e}")
+
+        # After processing, occasionally add a longer delay to avoid detection patterns
+        if random.random() < 0.2:  # 20% chance of a post-processing delay
+            delay = random.uniform(1, 3)
+            logging.debug(f"Adding post-processing delay of {delay:.2f}s")
+            time.sleep(delay)
 
         return {
             "closing_text": closing_text,
